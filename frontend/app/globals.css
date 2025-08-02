@@ -2,106 +2,178 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Performance optimized animations */
+@keyframes shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: calc(200px + 100%) 0;
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-}
-@layer utilities {
-  .animate-spin-slow {
-    animation: spin 3s linear infinite;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
-  @keyframes spin {
-    100% {
-      transform: rotate(360deg);
-    }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
+}
 
-  .animate-loading-bar {
-    animation: loading-bar 2s linear infinite;
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
   }
-  @keyframes loading-bar {
-    0% {
-      transform: translateX(-100%);
-    }
-    100% {
-      transform: translateX(0%);
-    }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
-
-
-}
-::selection {
- background-color: #388a83; /* Tailwind's blue-400 */
-  color: #03fff2;
 }
 
-/* Selection style for dark mode */
-.dark ::selection {
-  background-color: #003b32; /* Tailwind's blue-400 */
-  color: #0cddd3; /* White text */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
-/* styles/globals.css */
-
-/* Customize Reactour tooltip */
-
-.reactour__overlay {
-  background-color: #2D3748 !important;
+/* Utility classes for performance */
+.animate-shimmer {
+  animation: shimmer 2s infinite linear;
+  background: linear-gradient(90deg, #374151 25%, #4b5563 50%, #374151 75%);
+  background-size: 200px 100%;
 }
 
-.reactour__helper {
-  border-radius: 8px;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
 }
 
-.reactour__header {
-  background-color: #4F46E5; /* Tailwind's indigo-600 */
-  color: white;
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out;
 }
 
-.reactour__close {
-  color: white;
+.animate-scale-in {
+  animation: scaleIn 0.3s ease-out;
 }
 
-.reactour__body {
-  color: #e2e8f0; /* Tailwind's gray-200 */
+/* Performance optimizations */
+.will-change-transform {
+  will-change: transform;
 }
 
-.reactour__footer {
-  background-color: #4F46E5; /* Tailwind's indigo-600 */
-  border-bottom-left-radius: 8px;
-  border-bottom-right-radius: 8px;
+.will-change-opacity {
+  will-change: opacity;
 }
 
-.reactour__button {
-  background-color: #818CF8; /* Tailwind's blue-400 */
-  color: white;
-  border: none;
-  padding: 8px 16px;
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Optimized focus styles */
+.focus-visible:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Reduced motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Custom scrollbar for better performance */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1f2937;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4b5563;
   border-radius: 4px;
-  margin: 0 4px;
 }
 
-.reactour__button--secondary {
-  background-color: #6B7280; /* Tailwind's gray-500 */
+::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
 }
 
-.reactour__buttons {
-  display: flex;
-  justify-content: flex-end;
+/* Loading states */
+.loading-skeleton {
+  background: linear-gradient(90deg, #374151 25%, #4b5563 50%, #374151 75%);
+  background-size: 200px 100%;
+  animation: shimmer 2s infinite linear;
+}
+
+/* Optimized transitions */
+.transition-fast {
+  transition: all 0.15s ease-in-out;
+}
+
+.transition-normal {
+  transition: all 0.3s ease-in-out;
+}
+
+.transition-slow {
+  transition: all 0.5s ease-in-out;
+}
+
+/* Performance monitoring */
+.performance-monitor {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 9999;
+  display: none;
+}
+
+.performance-monitor.show {
+  display: block;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .mobile-optimized {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+  }
+}
+
+/* High DPI optimizations */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .high-dpi {
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: pixelated;
+  }
+}
+
+/* Print styles for better performance */
+@media print {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
 }
