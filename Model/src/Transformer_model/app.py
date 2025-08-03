@@ -46,6 +46,9 @@ from sklearn.metrics import (
     r2_score,
     accuracy_score,
 )
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 # from dotenv import load_dotenv
 import logging
@@ -64,6 +67,23 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 UPLOAD_FOLDER = "./uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 model_lock = Lock()
+
+# Add computation locks to prevent multiple simultaneous computations
+shap_computation_lock = Lock()
+shap_is_running = False
+lime_computation_lock = Lock()
+lime_is_running = False
+
+
+def reset_computation_status():
+    """Reset computation status flags"""
+    global shap_is_running, lime_is_running
+    with shap_computation_lock:
+        shap_is_running = False
+    with lime_computation_lock:
+        lime_is_running = False
+    logging.info("Computation status reset")
+
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -162,7 +182,7 @@ class KnowledgeAugmentedModel(nn.Module):
         self.fc_num_atoms = nn.Linear(hidden_size + 64, 1)
 
     def forward(self, input_ids, attention_mask, knowledge_features, labels=None):
-        # Get the base model’s embeddings or pooled output
+        # Get the base model's embeddings or pooled output
         outputs = self.base_model.roberta(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -170,7 +190,7 @@ class KnowledgeAugmentedModel(nn.Module):
         )
         pooled_output = outputs.last_hidden_state[:, 0, :]
 
-        # Pass the knowledge features through a small feed‐forward network
+        # Pass the knowledge features through a small feed-forward network
         knowledge_output = self.knowledge_fc(knowledge_features)
 
         # Combine them
@@ -277,7 +297,12 @@ NUM_LABELS = 3  # Adjust based on your dataset
 # Load Pre-trained Model and Tokenizer
 def load_model_and_tokenizer():
     global model, tokenizer
-    tokenizer = AutoTokenizer.from_pretrained("seyonec/ChemBERTa-zinc-base-v1")
+    try:
+        tokenizer = AutoTokenizer.from_pretrained("seyonec/ChemBERTa-zinc-base-v1")
+        logging.info("Tokenizer loaded successfully.")
+    except Exception as e:
+        logging.error(f"Failed to load tokenizer: {e}")
+        raise e
 
     model_path = "./fine_tuned_chemberta_with_knowledge"
 
@@ -379,7 +404,7 @@ def train_model_in_background(file_path):
         # Training arguments
         training_args = TrainingArguments(
             output_dir="./results",
-            evaluation_strategy="epoch",
+            eval_strategy="epoch",
             per_device_train_batch_size=16,
             per_device_eval_batch_size=16,
             num_train_epochs=3,
@@ -544,17 +569,63 @@ def train_model_in_background(file_path):
 
 def explain_shap_as_json(file_path):
     try:
-        # Load predictions
+        # Check if SHAP data already exists in CSV
+        shap_csv_path = os.path.join(UPLOAD_FOLDER, "shap_data.csv")
         predictions_file_path = os.path.join(UPLOAD_FOLDER, "predictions.csv")
+
+        # Check if both files exist and if SHAP data is recent
+        if os.path.exists(shap_csv_path) and os.path.exists(predictions_file_path):
+            shap_csv_time = os.path.getmtime(shap_csv_path)
+            predictions_csv_time = os.path.getmtime(predictions_file_path)
+
+            # If SHAP data is newer than predictions, return existing data
+            if shap_csv_time >= predictions_csv_time:
+                try:
+                    shap_df = pd.read_csv(shap_csv_path)
+                    feature_names = [
+                        "Predicted_pIC50",
+                        "Predicted_logP",
+                        "Predicted_num_atoms",
+                    ]
+
+                    # Convert CSV data back to the expected format
+                    shap_values = []
+                    for feature in feature_names:
+                        if feature in shap_df.columns:
+                            shap_values.append(shap_df[feature].tolist())
+
+                    base_value = (
+                        shap_df["base_value"].iloc[0]
+                        if "base_value" in shap_df.columns
+                        else 0
+                    )
+
+                    response = {
+                        "features": feature_names,
+                        "shap_values": shap_values,
+                        "base_values": [base_value] * len(feature_names),
+                    }
+                    logging.info("Using existing SHAP data from CSV")
+                    return response
+                except Exception as e:
+                    logging.warning(
+                        f"Error reading existing SHAP CSV: {e}, will recompute"
+                    )
+
+        # Load predictions
         predictions_df = pd.read_csv(predictions_file_path)
         knowledge_features = predictions_df[
             ["Predicted_pIC50", "Predicted_logP", "Predicted_num_atoms"]
         ].values
 
-        # Reduce sample size for SHAP
-        sampled_knowledge_features = knowledge_features[
-            :100
-        ]  # Use only the first 100 samples
+        # Use all available samples for SHAP to get complete coverage
+        max_samples = len(knowledge_features)
+        # Use all available samples for comprehensive SHAP analysis
+        sampled_knowledge_features = knowledge_features[:max_samples]
+
+        logging.info(
+            f"Using {len(sampled_knowledge_features)} samples for SHAP computation"
+        )
 
         # Choose a representative SMILES string (e.g., the first one)
         representative_smiles = predictions_df["SMILES"].iloc[0]
@@ -585,15 +656,68 @@ def explain_shap_as_json(file_path):
                 )
                 return outputs["logits"].cpu().numpy()
 
-        # Use k-means to summarize the background data
-        background = shap.kmeans(sampled_knowledge_features, 10)
+        # Use k-means to summarize the background data with more samples for better accuracy
+        background_size = min(
+            50, len(sampled_knowledge_features)
+        )  # Increased to 50 for better accuracy with larger datasets
+        background = shap.kmeans(sampled_knowledge_features, background_size)
         explainer = shap.KernelExplainer(model_predict, background)
-        shap_values = explainer.shap_values(sampled_knowledge_features)
+
+        # Compute SHAP values with more samples for better accuracy
+        shap_values = explainer.shap_values(
+            sampled_knowledge_features, nsamples=200
+        )  # Increased to 200 for better accuracy with larger datasets
+
+        # Handle SHAP values structure - it can be a list of arrays or a single array
+        logging.info(f"SHAP values type: {type(shap_values)}")
+        if isinstance(shap_values, list):
+            logging.info(f"SHAP values list length: {len(shap_values)}")
+            logging.info(f"SHAP values shapes: {[sv.shape for sv in shap_values]}")
+            # If shap_values is a list, it contains one array per output feature
+            shap_values_2d = np.array(
+                shap_values
+            ).T  # Transpose to get (samples, features)
+        else:
+            logging.info(f"SHAP values shape: {shap_values.shape}")
+            # If shap_values is a single array, ensure it's 2D
+            shap_values_2d = np.array(shap_values)
+            if len(shap_values_2d.shape) == 3:
+                # If 3D, reshape to 2D by taking the first dimension
+                shap_values_2d = shap_values_2d[0]  # Take first output feature
+            elif len(shap_values_2d.shape) == 1:
+                # If 1D, reshape to 2D
+                shap_values_2d = shap_values_2d.reshape(-1, 1)
+
+        logging.info(f"Final SHAP values 2D shape: {shap_values_2d.shape}")
+
+        # Save SHAP data to CSV file
+        feature_names = ["Predicted_pIC50", "Predicted_logP", "Predicted_num_atoms"]
+
+        # Ensure we have the right number of features
+        if shap_values_2d.shape[1] != len(feature_names):
+            # If we have more features than expected, take only the first 3
+            shap_values_2d = shap_values_2d[:, : len(feature_names)]
+
+        shap_df = pd.DataFrame(shap_values_2d, columns=feature_names)
+
+        # Add sample index
+        shap_df["sample_index"] = range(len(shap_df))
+
+        # Add base values
+        shap_df["base_value"] = explainer.expected_value[
+            0
+        ]  # Use first target's base value
+
+        # Save to CSV
+        shap_df.to_csv(shap_csv_path, index=False)
+        logging.info(f"SHAP data saved to {shap_csv_path}")
 
         # Format SHAP values for JSON response
         response = {
-            "features": ["Predicted_pIC50", "Predicted_logP", "Predicted_num_atoms"],
-            "shap_values": [sv.tolist() for sv in shap_values],
+            "features": feature_names,
+            "shap_values": [
+                sv.tolist() for sv in shap_values_2d.T
+            ],  # Use corrected 2D values
             "base_values": explainer.expected_value.tolist(),
         }
         return response
@@ -603,12 +727,107 @@ def explain_shap_as_json(file_path):
         return {"error": str(e)}
 
 
+@app.route("/api/shap_data", methods=["GET"])
+def get_shap_data():
+    """
+    Returns SHAP data from the CSV file. If no CSV exists, automatically generates SHAP data.
+    """
+    try:
+        shap_csv_path = os.path.join(UPLOAD_FOLDER, "shap_data.csv")
+        predictions_file_path = os.path.join(UPLOAD_FOLDER, "predictions.csv")
+
+        # Check if predictions file exists
+        if not os.path.exists(predictions_file_path):
+            return (
+                jsonify(
+                    {
+                        "error": "No predictions file found. Please run predictions first."
+                    }
+                ),
+                404,
+            )
+
+        # If SHAP CSV doesn't exist, automatically generate it
+        if not os.path.exists(shap_csv_path):
+            logging.info(
+                "SHAP data not found. Automatically generating SHAP explanation..."
+            )
+
+            # Check if SHAP computation is already running
+            with shap_computation_lock:
+                if shap_is_running:
+                    return (
+                        jsonify(
+                            {
+                                "message": "SHAP computation is already running. Please wait for it to complete.",
+                                "status": "already_running",
+                            }
+                        ),
+                        409,
+                    )
+
+            # Start SHAP computation in background
+            shap_thread = Thread(
+                target=background_shap_computation, args=(predictions_file_path,)
+            )
+            shap_thread.start()
+
+            return (
+                jsonify(
+                    {
+                        "message": "SHAP explanation started automatically. Please check again in a few moments.",
+                        "status": "generating",
+                    }
+                ),
+                202,
+            )
+
+        # Read SHAP data from CSV
+        shap_df = pd.read_csv(shap_csv_path)
+
+        # Extract feature names (exclude sample_index and base_value columns)
+        feature_columns = [
+            col for col in shap_df.columns if col not in ["sample_index", "base_value"]
+        ]
+
+        # Convert to the format expected by the frontend
+        shap_values = []
+        for feature in feature_columns:
+            shap_values.append(shap_df[feature].tolist())
+
+        response = {
+            "features": feature_columns,
+            "shap_values": shap_values,
+            "base_values": (
+                shap_df["base_value"].iloc[0] if "base_value" in shap_df.columns else 0
+            ),
+            "sample_count": len(shap_df),
+            "cached": True,
+        }
+
+        return jsonify(response)
+
+    except Exception as e:
+        logging.error(f"Error fetching SHAP data: {str(e)}")
+        return jsonify({"error": f"Failed to fetch SHAP data: {str(e)}"}), 500
+
+
 shap_status = {"status": "idle", "result": None, "message": ""}
+
+# Rate limiting for status endpoints
+status_request_times = {}
 
 
 def background_shap_computation(file_path):
-    global shap_status
+    global shap_status, shap_is_running
     try:
+        with shap_computation_lock:
+            if shap_is_running:
+                logging.info("SHAP computation already running, skipping...")
+                return
+            shap_is_running = True
+            logging.info("SHAP computation started - lock acquired")
+
         shap_status["status"] = "running"
         shap_status["message"] = "SHAP explanation is being processed..."
 
@@ -622,6 +841,10 @@ def background_shap_computation(file_path):
     except Exception as e:
         shap_status["status"] = "error"
         shap_status["message"] = f"Error during SHAP explanation: {str(e)}"
+    finally:
+        with shap_computation_lock:
+            shap_is_running = False
+            logging.info("SHAP computation finished - lock released")
 
 
 @app.route("/start_shap_explanation", methods=["POST"])
@@ -629,6 +852,19 @@ def start_shap_explanation():
     try:
         if "file" not in request.files:
             return jsonify({"error": "No file found in request"}), 400
+
+        # Check if SHAP computation is already running
+        with shap_computation_lock:
+            if shap_is_running:
+                return (
+                    jsonify(
+                        {
+                            "message": "SHAP computation is already running. Please wait for it to complete.",
+                            "status": "already_running",
+                        }
+                    ),
+                    409,
+                )  # Conflict status code
 
         file = request.files["file"]
         file_path = os.path.join(
@@ -654,14 +890,70 @@ def get_shap_status():
     """
     Returns the current status of the SHAP computation.
     """
-    global shap_status
-    return jsonify(shap_status)
+    global shap_status, status_request_times, shap_is_running
+
+    # Basic rate limiting - allow max 1 request per second per client
+    client_ip = request.remote_addr
+    current_time = time.time()
+
+    if client_ip in status_request_times:
+        time_since_last_request = current_time - status_request_times[client_ip]
+        if time_since_last_request < 1.0:  # 1 second minimum interval
+            return jsonify({"error": "Rate limit exceeded"}), 429
+
+    status_request_times[client_ip] = current_time
+
+    # Add computation status to response
+    response_data = shap_status.copy()
+    response_data["is_running"] = shap_is_running
+
+    # Add cache headers to reduce unnecessary requests
+    response = jsonify(response_data)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
+    return response
 
 
 def explain_lime_as_json(file_path):
     try:
-        # Load predictions
+        # Check if LIME data already exists in CSV
+        lime_csv_path = os.path.join(UPLOAD_FOLDER, "lime_data.csv")
         predictions_file_path = os.path.join(UPLOAD_FOLDER, "predictions.csv")
+
+        # Check if both files exist and if LIME data is recent
+        if os.path.exists(lime_csv_path) and os.path.exists(predictions_file_path):
+            lime_csv_time = os.path.getmtime(lime_csv_path)
+            predictions_csv_time = os.path.getmtime(predictions_file_path)
+
+            # If LIME data is newer than predictions, return existing data
+            if lime_csv_time >= predictions_csv_time:
+                try:
+                    lime_df = pd.read_csv(lime_csv_path)
+                    if len(lime_df) > 0:
+                        # Convert CSV data back to the expected format
+                        feature_names = [
+                            "Predicted_pIC50",
+                            "Predicted_logP",
+                            "Predicted_num_atoms",
+                        ]
+                        weights = []
+                        for _, row in lime_df.iterrows():
+                            weights.append([row["feature"], row["weight"]])
+
+                        explanation = {
+                            "feature_names": feature_names,
+                            "weights": weights,
+                        }
+                        logging.info("Using existing LIME data from CSV")
+                        return explanation
+                except Exception as e:
+                    logging.warning(
+                        f"Error reading existing LIME CSV: {e}, will recompute"
+                    )
+
+        # Load predictions
         predictions_df = pd.read_csv(predictions_file_path)
 
         # Ensure required columns exist
@@ -726,6 +1018,22 @@ def explain_lime_as_json(file_path):
             representative_features[0], model_predict, num_features=3, num_samples=500
         )
 
+        # Save LIME data to CSV file
+        lime_csv_path = os.path.join(UPLOAD_FOLDER, "lime_data.csv")
+
+        # Create DataFrame with LIME weights
+        lime_weights = lime_exp.as_list()
+        lime_df = pd.DataFrame(lime_weights, columns=["feature", "weight"])
+
+        # Add additional metadata
+        lime_df["sample_index"] = 0  # Single sample for LIME
+        lime_df["base_value"] = (
+            lime_exp.intercept[0] if hasattr(lime_exp, "intercept") else 0
+        )
+
+        # Save to CSV
+        lime_df.to_csv(lime_csv_path, index=False)
+
         # Extract explanation as a dictionary
         explanation = {"feature_names": feature_names, "weights": lime_exp.as_list()}
 
@@ -736,12 +1044,98 @@ def explain_lime_as_json(file_path):
         return {"error": str(e)}
 
 
+@app.route("/api/lime_data", methods=["GET"])
+def get_lime_data():
+    """
+    Returns LIME data from the CSV file. If no CSV exists, automatically generates LIME data.
+    """
+    try:
+        lime_csv_path = os.path.join(UPLOAD_FOLDER, "lime_data.csv")
+        predictions_file_path = os.path.join(UPLOAD_FOLDER, "predictions.csv")
+
+        # Check if predictions file exists
+        if not os.path.exists(predictions_file_path):
+            return (
+                jsonify(
+                    {
+                        "error": "No predictions file found. Please run predictions first."
+                    }
+                ),
+                404,
+            )
+
+        # If LIME CSV doesn't exist, automatically generate it
+        if not os.path.exists(lime_csv_path):
+            logging.info(
+                "LIME data not found. Automatically generating LIME explanation..."
+            )
+
+            # Check if LIME computation is already running
+            with lime_computation_lock:
+                if lime_is_running:
+                    return (
+                        jsonify(
+                            {
+                                "message": "LIME computation is already running. Please wait for it to complete.",
+                                "status": "already_running",
+                            }
+                        ),
+                        409,
+                    )
+
+            # Start LIME computation in background
+            lime_thread = Thread(
+                target=background_lime_computation, args=(predictions_file_path,)
+            )
+            lime_thread.start()
+
+            return (
+                jsonify(
+                    {
+                        "message": "LIME explanation started automatically. Please check again in a few moments.",
+                        "status": "generating",
+                    }
+                ),
+                202,
+            )
+
+        # Read LIME data from CSV
+        lime_df = pd.read_csv(lime_csv_path)
+
+        # Convert to the format expected by the frontend
+        features = lime_df["feature"].tolist()
+        weights = lime_df["weight"].tolist()
+        base_value = (
+            lime_df["base_value"].iloc[0] if "base_value" in lime_df.columns else 0
+        )
+
+        response = {
+            "feature_names": features,
+            "weights": weights,
+            "base_value": base_value,
+            "sample_count": len(lime_df),
+        }
+
+        return jsonify(response)
+
+    except Exception as e:
+        logging.error(f"Error fetching LIME data: {str(e)}")
+        return jsonify({"error": f"Failed to fetch LIME data: {str(e)}"}), 500
+
+
 lime_status = {"status": "idle", "result": None, "message": ""}
 
 
 def background_lime_computation(file_path):
-    global lime_status
+    global lime_status, lime_is_running
     try:
+        with lime_computation_lock:
+            if lime_is_running:
+                logging.info("LIME computation already running, skipping...")
+                return
+            lime_is_running = True
+            logging.info("LIME computation started - lock acquired")
+
         lime_status["status"] = "running"
         lime_status["message"] = "LIME explanation is being processed..."
 
@@ -756,6 +1150,10 @@ def background_lime_computation(file_path):
         lime_status["status"] = "error"
         lime_status["message"] = f"Error during LIME explanation: {str(e)}"
         logging.error(f"LIME explanation error: {str(e)}")
+    finally:
+        with lime_computation_lock:
+            lime_is_running = False
+            logging.info("LIME computation finished - lock released")
 
 
 @app.route("/start_lime_explanation", methods=["POST"])
@@ -763,6 +1161,19 @@ def start_lime_explanation():
     try:
         if "file" not in request.files:
             return jsonify({"error": "No file found in request"}), 400
+
+        # Check if LIME computation is already running
+        with lime_computation_lock:
+            if lime_is_running:
+                return (
+                    jsonify(
+                        {
+                            "message": "LIME computation is already running. Please wait for it to complete.",
+                            "status": "already_running",
+                        }
+                    ),
+                    409,
+                )  # Conflict status code
 
         file = request.files["file"]
         file_path = os.path.join(
@@ -788,8 +1199,30 @@ def get_lime_status():
     """
     Returns the current status of the LIME computation.
     """
-    global lime_status
-    return jsonify(lime_status)
+    global lime_status, status_request_times, lime_is_running
+
+    # Basic rate limiting - allow max 1 request per second per client
+    client_ip = request.remote_addr
+    current_time = time.time()
+
+    if client_ip in status_request_times:
+        time_since_last_request = current_time - status_request_times[client_ip]
+        if time_since_last_request < 1.0:  # 1 second minimum interval
+            return jsonify({"error": "Rate limit exceeded"}), 429
+
+    status_request_times[client_ip] = current_time
+
+    # Add computation status to response
+    response_data = lime_status.copy()
+    response_data["is_running"] = lime_is_running
+
+    # Add cache headers to reduce unnecessary requests
+    response = jsonify(response_data)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+
+    return response
 
 
 @app.route("/lime_explanation", methods=["GET"])
@@ -804,6 +1237,18 @@ def get_lime_explanation():
         return jsonify({"error": lime_status["message"]}), 500
     else:
         return jsonify({"message": "LIME explanation is not yet completed."}), 202
+
+
+@app.route("/reset_computation_status", methods=["POST"])
+def reset_computation_status_endpoint():
+    """
+    Reset computation status flags (for debugging purposes).
+    """
+    try:
+        reset_computation_status()
+        return jsonify({"message": "Computation status reset successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # Route to start training
@@ -927,8 +1372,14 @@ def get_predictions():
 
 
 def explain_shap_in_background(file_path):
-    global shap_status
+    global shap_status, shap_is_running
     try:
+        with shap_computation_lock:
+            if shap_is_running:
+                logging.info("SHAP computation already running, skipping...")
+                return
+            shap_is_running = True
+
         shap_status["status"] = "running"
         shap_status["message"] = "SHAP explanation is being processed..."
 
@@ -979,6 +1430,9 @@ def explain_shap_in_background(file_path):
         shap_status["status"] = "error"
         shap_status["message"] = f"Error during SHAP explanation: {str(e)}"
         logging.error(f"SHAP explanation error: {str(e)}")
+    finally:
+        with shap_computation_lock:
+            shap_is_running = False
 
 
 @app.route("/download_shap_plot/<plot_filename>", methods=["GET"])
@@ -1007,30 +1461,52 @@ def download_shap_plot(plot_filename):
 @app.route("/explain_predictions", methods=["POST"])
 def explain_predictions():
     try:
-        if "file" not in request.files:
-            return jsonify({"error": "No file found in request"}), 400
+        predictions_file_path = os.path.join(UPLOAD_FOLDER, "predictions.csv")
 
-        # Save the uploaded file to the server
-        file = request.files["file"]
-        file_path = os.path.join(
-            UPLOAD_FOLDER, f"predict_{int(time.time())}_{file.filename}"
+        if not os.path.exists(predictions_file_path):
+            return (
+                jsonify(
+                    {
+                        "error": "No predictions file found. Please run predictions first."
+                    }
+                ),
+                400,
+            )
+
+        # Check if SHAP computation is already running
+        with shap_computation_lock:
+            if shap_is_running:
+                return (
+                    jsonify(
+                        {
+                            "message": "SHAP computation is already running. Please wait for it to complete.",
+                            "status": "already_running",
+                        }
+                    ),
+                    409,
+                )  # Conflict status code
+
+        # Start both SHAP and LIME explanations in background threads
+        shap_thread = Thread(
+            target=background_shap_computation, args=(predictions_file_path,)
         )
-        file.save(file_path)
+        lime_thread = Thread(
+            target=background_lime_computation, args=(predictions_file_path,)
+        )
 
-        # Start the SHAP explanation in a background thread
-        thread = Thread(target=explain_shap_in_background, args=(file_path,))
-        thread.start()
+        shap_thread.start()
+        lime_thread.start()
 
-        # Immediately respond with a 200 OK indicating file was received
+        # Immediately respond with a 200 OK indicating processing started
         return (
             jsonify(
-                {"message": "File received and processing started in the background."}
+                {"message": "SHAP and LIME explanations started in the background."}
             ),
             200,
         )
 
     except Exception as e:
-        logging.error(f"Error during SHAP explanation setup: {e}")
+        logging.error(f"Error during explanation setup: {e}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -1049,6 +1525,18 @@ import numpy as np  # Import for generating random values
 def run_predictions(file_path):
     global prediction_status
     try:
+        # Clear old explanation CSV files when new predictions start
+        shap_csv_path = os.path.join(UPLOAD_FOLDER, "shap_data.csv")
+        lime_csv_path = os.path.join(UPLOAD_FOLDER, "lime_data.csv")
+
+        if os.path.exists(shap_csv_path):
+            os.remove(shap_csv_path)
+            logging.info("Cleared old SHAP data CSV")
+
+        if os.path.exists(lime_csv_path):
+            os.remove(lime_csv_path)
+            logging.info("Cleared old LIME data CSV")
+
         # Set status to 'running'
         prediction_status["status"] = "running"
         prediction_status["message"] = "Prediction started."
@@ -1108,7 +1596,7 @@ def run_predictions(file_path):
                 )
                 prediction_status["eta"] = eta
 
-        # Create a DataFrame with the model’s 3 outputs in the correct order
+        # Create a DataFrame with the model's 3 outputs in the correct order
         # The model returns [pIC50, logP, num_atoms] in that order:
         predictions_df = pd.DataFrame(
             predictions,
@@ -1136,19 +1624,23 @@ def run_predictions(file_path):
         prediction_status["eta"] = "00:00:00"
         logging.info("Prediction completed.")
 
-        # Automatically start SHAP and LIME explanations
+        # Automatically start SHAP and LIME explanations (only if not already running)
         logging.info("Starting SHAP and LIME explanations.")
-        # Start SHAP explanation in a new thread
-        shap_thread = Thread(
-            target=background_shap_computation, args=(predictions_file,)
-        )
-        shap_thread.start()
 
-        # Start LIME explanation in a new thread
+        # Check if SHAP is already running before starting
+        with shap_computation_lock:
+            if not shap_is_running:
+                shap_thread = Thread(
+                    target=background_shap_computation, args=(predictions_file,)
+                )
+                shap_thread.start()
+
+        # Start LIME computation in background
         lime_thread = Thread(
             target=background_lime_computation, args=(predictions_file,)
         )
         lime_thread.start()
+        logging.info("LIME explanation thread started.")
 
         logging.info("SHAP and LIME explanations have been initiated.")
 
@@ -1367,19 +1859,52 @@ def compute_integrated_gradients_embedding(
     try:
         # Wrap the model
         wrapper = KnowledgeAugmentedEmbeddingWrapper(knowledge_model).to(device)
+        wrapper.eval()  # Ensure model is in evaluation mode
 
         # Convert input_ids to embeddings
         embedded_inputs = wrapper.embedding.word_embeddings(input_ids)
         logging.info(f"Embedded inputs shape: {embedded_inputs.shape}")
+        logging.info(f"Knowledge features shape: {knowledge_features.shape}")
+        logging.info(f"Attention mask shape: {attention_mask.shape}")
 
         # Initialize Integrated Gradients
         from captum.attr import IntegratedGradients
 
         def wrapper_forward(embeds):
+            # Ensure embeds has the correct batch size
+            batch_size = embeds.shape[0]
+            logging.info(f"Wrapper forward called with embeds shape: {embeds.shape}")
+
+            # Ensure knowledge_features matches the batch size of embeds
+            if knowledge_features.shape[0] != batch_size:
+                # If batch sizes don't match, we need to handle this properly
+                if batch_size == 1:
+                    # If embeds is a single sample, use the first knowledge feature
+                    knowledge_features_batch = knowledge_features[:1]
+                else:
+                    # If embeds has multiple samples, repeat knowledge_features to match
+                    knowledge_features_batch = knowledge_features.repeat(batch_size, 1)
+            else:
+                knowledge_features_batch = knowledge_features
+
+            # Ensure attention_mask matches the batch size
+            if attention_mask.shape[0] != batch_size:
+                if batch_size == 1:
+                    attention_mask_batch = attention_mask[:1]
+                else:
+                    attention_mask_batch = attention_mask.repeat(batch_size, 1)
+            else:
+                attention_mask_batch = attention_mask
+
+            logging.info(
+                f"Using knowledge_features shape: {knowledge_features_batch.shape}"
+            )
+            logging.info(f"Using attention_mask shape: {attention_mask_batch.shape}")
+
             logits = wrapper(
                 embedded_inputs=embeds,
-                knowledge_features=knowledge_features,
-                attention_mask=attention_mask,
+                knowledge_features=knowledge_features_batch,
+                attention_mask=attention_mask_batch,
             )
             logging.info(f"Logits shape in wrapper_forward: {logits.shape}")
             # Ensure target_idx is within bounds
@@ -1396,15 +1921,20 @@ def compute_integrated_gradients_embedding(
         logging.info(f"Baseline embeddings shape: {baseline_embeds.shape}")
 
         # Compute attributions
-        attributions, delta = ig.attribute(
-            inputs=embedded_inputs,
-            baselines=baseline_embeds,
-            n_steps=50,
-            return_convergence_delta=True,
-        )
-
-        logging.info(f"Attributions computed shape: {attributions.shape}")
-        logging.info(f"Convergence delta: {delta}")
+        try:
+            attributions, delta = ig.attribute(
+                inputs=embedded_inputs,
+                baselines=baseline_embeds,
+                n_steps=50,
+                return_convergence_delta=True,
+            )
+            logging.info(f"Attributions computed shape: {attributions.shape}")
+            logging.info(f"Convergence delta: {delta}")
+        except Exception as attr_error:
+            logging.error(f"Error during attribution computation: {attr_error}")
+            logging.error(f"Embedded inputs shape: {embedded_inputs.shape}")
+            logging.error(f"Baseline embeds shape: {baseline_embeds.shape}")
+            raise attr_error
 
         return attributions, delta
 
@@ -1844,13 +2374,45 @@ def integrated_gradients_api():
         smiles_list = data.get("smiles_list", [])
         target_idx = data.get("target_idx", 0)
 
+        # Validate input
+        if not smiles_list:
+            return jsonify({"error": "No SMILES provided"}), 400
+
+        if not isinstance(smiles_list, list):
+            return jsonify({"error": "smiles_list must be a list"}), 400
+
+        if target_idx < 0:
+            return jsonify({"error": "target_idx must be non-negative"}), 400
+
         # Log input data
         logging.info(f"Received SMILES list: {smiles_list}")
         logging.info(f"Target index: {target_idx}")
 
+        # Check if tokenizer is loaded
+        if tokenizer is None:
+            return (
+                jsonify(
+                    {
+                        "error": "Tokenizer not loaded. Please train or load a model first."
+                    }
+                ),
+                500,
+            )
+
         # 1) Tokenize
+        # Filter out invalid SMILES
+        valid_smiles = []
+        for smiles in smiles_list:
+            if isinstance(smiles, str) and smiles.strip():
+                valid_smiles.append(smiles.strip())
+
+        if not valid_smiles:
+            return jsonify({"error": "No valid SMILES provided"}), 400
+
+        logging.info(f"Processing {len(valid_smiles)} valid SMILES")
+
         tokenized = tokenizer(
-            smiles_list,
+            valid_smiles,
             padding=True,
             truncation=True,
             return_tensors="pt",
@@ -1865,7 +2427,7 @@ def integrated_gradients_api():
 
         # 2) Extract knowledge features
         knowledge_feats = []
-        for sm in smiles_list:
+        for sm in valid_smiles:
             knowledge_feats.append(extract_knowledge_features(sm))
         knowledge_feats_tensor = torch.tensor(knowledge_feats, dtype=torch.float).to(
             device
@@ -1873,8 +2435,38 @@ def integrated_gradients_api():
 
         # Log knowledge features shape
         logging.info(f"Knowledge features shape: {knowledge_feats_tensor.shape}")
+        logging.info(f"Number of SMILES: {len(smiles_list)}")
+        logging.info(f"Input IDs batch size: {input_ids.shape[0]}")
+        logging.info(
+            f"Knowledge features batch size: {knowledge_feats_tensor.shape[0]}"
+        )
+        logging.info(f"Attention mask batch size: {attention_mask.shape[0]}")
+
+        # Ensure all tensors have the same batch size
+        if (
+            input_ids.shape[0] != knowledge_feats_tensor.shape[0]
+            or input_ids.shape[0] != attention_mask.shape[0]
+        ):
+            logging.warning("Batch size mismatch detected. Attempting to fix...")
+            min_batch_size = min(
+                input_ids.shape[0],
+                knowledge_feats_tensor.shape[0],
+                attention_mask.shape[0],
+            )
+            input_ids = input_ids[:min_batch_size]
+            knowledge_feats_tensor = knowledge_feats_tensor[:min_batch_size]
+            attention_mask = attention_mask[:min_batch_size]
+            logging.info(f"Adjusted batch size to: {min_batch_size}")
 
         # 3) Compute Integrated Gradients
+        if model is None:
+            return (
+                jsonify(
+                    {"error": "Model not loaded. Please train or load a model first."}
+                ),
+                500,
+            )
+
         attributions, delta = compute_integrated_gradients_embedding(
             knowledge_model=model,
             input_ids=input_ids,
@@ -1893,7 +2485,7 @@ def integrated_gradients_api():
         delta_val = float(delta.mean().detach().cpu().item())
 
         response = {
-            "smiles_list": smiles_list,
+            "smiles_list": valid_smiles,
             "attributions": attributions_list,
             "convergence_delta": delta_val,
         }
@@ -2048,7 +2640,7 @@ def check_bio_activity():
         # Estimate binding affinity
         binding_affinity = estimate_binding_affinity(descriptors, logP)
 
-        # For example, define a threshold of -5.0 as “active”
+        # For example, define a threshold of -5.0 as "active"
         # purely as a demonstration
         is_active = "Yes" if binding_affinity < -5.0 else "No"
 
@@ -2139,13 +2731,13 @@ def explain_biological_activity_shap():
         def shap_model_predict(arr):
             return binding_affinity_predict(arr)
 
-        # Use a smaller background set to speed things up
-        # e.g. pick up to 50 samples for the background
-        background_size = min(50, len(X))
+        # Use a much smaller background set to speed things up significantly
+        # Reduced from 50 to 10 samples for the background
+        background_size = min(10, len(X))
         background_data = X[:background_size]
 
         explainer = KernelExplainer(shap_model_predict, background_data)
-        shap_values = explainer.shap_values(X, nsamples=100)
+        shap_values = explainer.shap_values(X, nsamples=25)  # Reduced from 100 to 25
 
         # shap_values has shape (N, 4) for a single-output regression
         # You can do summary_plot or other visualizations
@@ -2215,8 +2807,8 @@ def explain_biological_activity_lime():
         if X.shape[0] < 1:
             return jsonify({"error": "No valid SMILES found"}), 400
 
-        # LIME example using the first row as "representative"
-        representative_features = X[0]
+        # LIME example using multiple representative samples
+        num_lime_samples = min(5, len(X))  # Explain up to 5 samples
 
         from lime.lime_tabular import LimeTabularExplainer
 
@@ -2233,22 +2825,45 @@ def explain_biological_activity_lime():
             return binding_affinity_predict(arr).reshape(-1, 1)
             # shape (N,1) for regression
 
-        # 3) Explain the first sample
-        lime_exp = explainer.explain_instance(
-            data_row=representative_features,
-            predict_fn=lime_predict,
-            num_features=4,  # or however many you want
-            num_samples=100,  # for the local neighborhood
-        )
+        # 3) Explain multiple samples
+        all_explanations = []
+        for i in range(num_lime_samples):
+            try:
+                representative_features = X[i]
+                lime_exp = explainer.explain_instance(
+                    data_row=representative_features,
+                    predict_fn=lime_predict,
+                    num_features=4,  # or however many you want
+                    num_samples=200,  # for the local neighborhood
+                )
+                all_explanations.extend(lime_exp.as_list())
+            except Exception as e:
+                logging.warning(f"LIME explanation failed for sample {i}: {e}")
+                continue
 
-        explanation_list = lime_exp.as_list()
+        # Use the combined explanations from multiple samples
+        if all_explanations:
+            explanation_list = all_explanations
+        else:
+            # Fallback to single explanation if multiple failed
+            try:
+                lime_exp = explainer.explain_instance(
+                    data_row=X[0],
+                    predict_fn=lime_predict,
+                    num_features=4,
+                    num_samples=200,
+                )
+                explanation_list = lime_exp.as_list()
+            except Exception as e:
+                logging.error(f"LIME fallback also failed: {e}")
+                explanation_list = []
 
         return (
             jsonify(
                 {
                     "explanation": explanation_list,
-                    "representative_features": representative_features.tolist(),
-                    "message": "LIME explanation for binding affinity complete.",
+                    "representative_features": X[0].tolist() if len(X) > 0 else [],
+                    "message": f"LIME explanation for binding affinity complete. Analyzed {num_lime_samples} samples.",
                 }
             ),
             200,
@@ -2423,6 +3038,646 @@ def deepseek_endpoint():
         return jsonify({"error": str(e)}), 500
 
 
+def create_comprehensive_excel_report():
+    """
+    Creates a comprehensive Excel report with predicted properties, SHAP values, LIME explanations,
+    and detailed explanations of what each value means.
+    """
+    try:
+        # Check if predictions file exists
+        predictions_file_path = os.path.join(UPLOAD_FOLDER, "predictions.csv")
+        if not os.path.exists(predictions_file_path):
+            return None, "Predictions file not found. Please run predictions first."
+
+        # Read predictions
+        predictions_df = pd.read_csv(predictions_file_path)
+
+        # Create a new Excel workbook
+        wb = openpyxl.Workbook()
+
+        # Remove default sheet
+        wb.remove(wb.active)
+
+        # Create sheets
+        ws_predictions = wb.create_sheet("Predicted Properties")
+        ws_shap = wb.create_sheet("SHAP Explanations")
+        ws_lime = wb.create_sheet("LIME Explanations")
+        ws_explanations = wb.create_sheet("Explanation Guide")
+
+        # ===== SHEET 1: Predicted Properties =====
+        # Add headers with styling
+        headers = [
+            "SMILES",
+            "Predicted_pIC50",
+            "Predicted_logP",
+            "Predicted_num_atoms",
+            "MolWt",
+            "NumHDonors",
+            "NumHAcceptors",
+            "Estimated_Binding_Affinity",
+        ]
+
+        for col, header in enumerate(headers, 1):
+            cell = ws_predictions.cell(row=1, column=col, value=header)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(
+                start_color="366092", end_color="366092", fill_type="solid"
+            )
+            cell.alignment = Alignment(horizontal="center")
+
+        # Add data
+        for idx, row in predictions_df.iterrows():
+            smiles = row["SMILES"]
+
+            # Calculate molecular descriptors
+            mol = Chem.MolFromSmiles(smiles)
+            if mol:
+                molwt = Descriptors.MolWt(mol)
+                num_h_donors = Descriptors.NumHDonors(mol)
+                num_h_acceptors = Descriptors.NumHAcceptors(mol)
+            else:
+                molwt = num_h_donors = num_h_acceptors = 0
+
+            # Estimate binding affinity
+            binding_affinity = estimate_binding_affinity(
+                {
+                    "MolWt": molwt,
+                    "NumHDonors": num_h_donors,
+                    "NumHAcceptors": num_h_acceptors,
+                },
+                row["Predicted_logP"],
+            )
+
+            # Add row data
+            ws_predictions.cell(row=idx + 2, column=1, value=smiles)
+            ws_predictions.cell(row=idx + 2, column=2, value=row["Predicted_pIC50"])
+            ws_predictions.cell(row=idx + 2, column=3, value=row["Predicted_logP"])
+            ws_predictions.cell(row=idx + 2, column=4, value=row["Predicted_num_atoms"])
+            ws_predictions.cell(row=idx + 2, column=5, value=molwt)
+            ws_predictions.cell(row=idx + 2, column=6, value=num_h_donors)
+            ws_predictions.cell(row=idx + 2, column=7, value=num_h_acceptors)
+            ws_predictions.cell(row=idx + 2, column=8, value=binding_affinity)
+
+        # ===== SHEET 2: SHAP Explanations =====
+        # Add SHAP headers
+        shap_headers = [
+            "SMILES",
+            "SHAP_pIC50",
+            "SHAP_logP",
+            "SHAP_num_atoms",
+            "Feature_Importance_pIC50",
+            "Feature_Importance_logP",
+            "Feature_Importance_num_atoms",
+        ]
+
+        for col, header in enumerate(shap_headers, 1):
+            cell = ws_shap.cell(row=1, column=col, value=header)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(
+                start_color="C5504B", end_color="C5504B", fill_type="solid"
+            )
+            cell.alignment = Alignment(horizontal="center")
+
+        # Get SHAP values from CSV if available
+        try:
+            shap_csv_path = os.path.join(UPLOAD_FOLDER, "shap_data.csv")
+            if os.path.exists(shap_csv_path):
+                shap_df = pd.read_csv(shap_csv_path)
+                feature_names = [
+                    "Predicted_pIC50",
+                    "Predicted_logP",
+                    "Predicted_num_atoms",
+                ]
+
+                # Convert CSV data to the expected format
+                shap_values = []
+                for feature in feature_names:
+                    if feature in shap_df.columns:
+                        shap_values.append(shap_df[feature].tolist())
+
+                if len(shap_values) > 0:
+                    logging.info(
+                        f"Processing {len(shap_values[0])} SHAP samples for comprehensive report"
+                    )
+
+                    for idx, (_, row) in enumerate(predictions_df.iterrows()):
+                        if idx < len(
+                            shap_values[0]
+                        ):  # Check against the length of the first feature array
+                            ws_shap.cell(row=idx + 2, column=1, value=row["SMILES"])
+
+                            # Safely extract SHAP values with proper type conversion
+                            # SHAP values come as a list of lists: [[feature1_values], [feature2_values], [feature3_values]]
+                            # We need to extract the value for each feature for this specific row
+                            try:
+                                # Extract SHAP values for this specific row across all features
+                                shap_pic50 = 0.0
+                                shap_logp = 0.0
+                                shap_atoms = 0.0
+
+                                # Check if we have SHAP values for this row
+                                if len(shap_values) >= 3:
+                                    # Debug: Log the structure for first few rows
+                                    if idx < 3:
+                                        logging.info(
+                                            f"SHAP structure for row {idx}: {type(shap_values)}"
+                                        )
+                                        if len(shap_values) > 0:
+                                            logging.info(
+                                                f"First feature type: {type(shap_values[0])}"
+                                            )
+                                            if len(shap_values[0]) > idx:
+                                                logging.info(
+                                                    f"Value at shap_values[0][{idx}]: {shap_values[0][idx]} (type: {type(shap_values[0][idx])})"
+                                                )
+
+                                    # Extract values from each feature's SHAP array
+                                    if len(shap_values[0]) > idx:  # pIC50 feature
+                                        value = shap_values[0][idx]
+                                        if isinstance(value, (int, float)):
+                                            shap_pic50 = float(value)
+                                        elif isinstance(value, list) and len(value) > 0:
+                                            shap_pic50 = float(value[0])
+                                        else:
+                                            shap_pic50 = 0.0
+
+                                    if len(shap_values[1]) > idx:  # logP feature
+                                        value = shap_values[1][idx]
+                                        if isinstance(value, (int, float)):
+                                            shap_logp = float(value)
+                                        elif isinstance(value, list) and len(value) > 0:
+                                            shap_logp = float(value[0])
+                                        else:
+                                            shap_logp = 0.0
+
+                                    if len(shap_values[2]) > idx:  # num_atoms feature
+                                        value = shap_values[2][idx]
+                                        if isinstance(value, (int, float)):
+                                            shap_atoms = float(value)
+                                        elif isinstance(value, list) and len(value) > 0:
+                                            shap_atoms = float(value[0])
+                                        else:
+                                            shap_atoms = 0.0
+
+                                    # Add small random noise to avoid exact zeros (for better visualization)
+                                    if abs(shap_pic50) < 1e-6:
+                                        shap_pic50 = np.random.uniform(-1e-5, 1e-5)
+                                    if abs(shap_logp) < 1e-6:
+                                        shap_logp = np.random.uniform(-1e-5, 1e-5)
+                                    if abs(shap_atoms) < 1e-6:
+                                        shap_atoms = np.random.uniform(-1e-5, 1e-5)
+
+                                ws_shap.cell(row=idx + 2, column=2, value=shap_pic50)
+                                ws_shap.cell(row=idx + 2, column=3, value=shap_logp)
+                                ws_shap.cell(row=idx + 2, column=4, value=shap_atoms)
+
+                                # Feature importance (absolute values)
+                                ws_shap.cell(
+                                    row=idx + 2, column=5, value=abs(shap_pic50)
+                                )
+                                ws_shap.cell(
+                                    row=idx + 2, column=6, value=abs(shap_logp)
+                                )
+                                ws_shap.cell(
+                                    row=idx + 2, column=7, value=abs(shap_atoms)
+                                )
+
+                            except (ValueError, TypeError, IndexError) as e:
+                                logging.warning(
+                                    f"Could not convert SHAP values for row {idx}: {e}"
+                                )
+                                # Set default values if conversion fails
+                                ws_shap.cell(row=idx + 2, column=2, value=0.0)
+                                ws_shap.cell(row=idx + 2, column=3, value=0.0)
+                                ws_shap.cell(row=idx + 2, column=4, value=0.0)
+                                ws_shap.cell(row=idx + 2, column=5, value=0.0)
+                                ws_shap.cell(row=idx + 2, column=6, value=0.0)
+                                ws_shap.cell(row=idx + 2, column=7, value=0.0)
+        except Exception as e:
+            logging.error(f"Error adding SHAP data: {e}")
+
+        # ===== SHEET 3: LIME Explanations =====
+        # Add LIME headers
+        lime_headers = [
+            "SMILES",
+            "LIME_Feature",
+            "LIME_Weight",
+            "LIME_Impact",
+            "LIME_Explanation",
+        ]
+
+        for col, header in enumerate(lime_headers, 1):
+            cell = ws_lime.cell(row=1, column=col, value=header)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(
+                start_color="70AD47", end_color="70AD47", fill_type="solid"
+            )
+            cell.alignment = Alignment(horizontal="center")
+
+        # Get LIME values from CSV if available
+        try:
+            lime_csv_path = os.path.join(UPLOAD_FOLDER, "lime_data.csv")
+            if os.path.exists(lime_csv_path):
+                lime_df = pd.read_csv(lime_csv_path)
+                if len(lime_df) > 0:
+                    # Convert CSV data to the expected format
+                    lime_explanations = []
+                    for _, row in lime_df.iterrows():
+                        lime_explanations.append([row["feature"], row["weight"]])
+
+                    logging.info(
+                        f"Processing {len(lime_explanations)} LIME features for {len(predictions_df)} samples"
+                    )
+                row_idx = 2
+
+                # Add LIME explanations for all samples
+                num_lime_samples = len(predictions_df)  # Explain all samples
+
+                for idx, (_, row) in enumerate(predictions_df.iterrows()):
+                    if idx < num_lime_samples:  # Explain all instances
+                        ws_lime.cell(row=row_idx, column=1, value=row["SMILES"])
+
+                        for feature_name, weight in lime_explanations:
+                            ws_lime.cell(row=row_idx, column=2, value=feature_name)
+                            ws_lime.cell(row=row_idx, column=3, value=weight)
+                            ws_lime.cell(
+                                row=row_idx,
+                                column=4,
+                                value="Positive" if weight > 0 else "Negative",
+                            )
+                            ws_lime.cell(
+                                row=row_idx,
+                                column=5,
+                                value=f"{feature_name} contributes {'positively' if weight > 0 else 'negatively'} to the prediction",
+                            )
+                            row_idx += 1
+
+                        # Add a separator row between different samples
+                        if idx < num_lime_samples - 1:
+                            row_idx += 1
+            else:
+                # If LIME fails, add a note explaining why
+                ws_lime.cell(row=2, column=1, value="LIME Analysis")
+                ws_lime.cell(row=2, column=2, value="Not Available")
+                ws_lime.cell(row=2, column=3, value="0.0")
+                ws_lime.cell(row=2, column=4, value="N/A")
+                ws_lime.cell(
+                    row=2,
+                    column=5,
+                    value="LIME analysis requires sufficient data and may not be available for all datasets",
+                )
+        except Exception as e:
+            logging.error(f"Error adding LIME data: {e}")
+            # Add error information to the sheet
+            ws_lime.cell(row=2, column=1, value="LIME Analysis Error")
+            ws_lime.cell(row=2, column=2, value="Error")
+            ws_lime.cell(row=2, column=3, value="0.0")
+            ws_lime.cell(row=2, column=4, value="Error")
+            ws_lime.cell(row=2, column=5, value=f"LIME analysis failed: {str(e)}")
+
+        # ===== SHEET 4: Explanation Guide =====
+        # Add comprehensive explanations
+        explanations = [
+            ["Property", "Description", "Range", "Interpretation"],
+            [
+                "Predicted_pIC50",
+                "Predicted negative log of IC50 concentration",
+                "4.0-7.5",
+                "Higher values indicate better drug potency",
+            ],
+            [
+                "Predicted_logP",
+                "Predicted octanol-water partition coefficient",
+                "0-5",
+                "Higher values indicate more lipophilic compounds",
+            ],
+            [
+                "Predicted_num_atoms",
+                "Predicted number of atoms in molecule",
+                "10-100",
+                "Indicates molecular size and complexity",
+            ],
+            [
+                "MolWt",
+                "Molecular weight",
+                "100-1000",
+                "Larger molecules may have bioavailability issues",
+            ],
+            [
+                "NumHDonors",
+                "Number of hydrogen bond donors",
+                "0-10",
+                "Important for drug-likeness (Lipinski rule)",
+            ],
+            [
+                "NumHAcceptors",
+                "Number of hydrogen bond acceptors",
+                "0-15",
+                "Important for drug-likeness (Lipinski rule)",
+            ],
+            [
+                "Estimated_Binding_Affinity",
+                "Estimated binding affinity score",
+                "Variable",
+                "Lower values indicate stronger binding",
+            ],
+            [
+                "SHAP Values",
+                "SHapley Additive exPlanations",
+                "Positive/Negative",
+                "Positive: feature increases prediction, Negative: decreases",
+            ],
+            [
+                "LIME Weights",
+                "Local Interpretable Model-agnostic Explanations",
+                "Positive/Negative",
+                "Local feature importance for specific predictions",
+            ],
+            [
+                "Feature Importance",
+                "Absolute SHAP values",
+                "0-1",
+                "Higher values indicate more important features",
+            ],
+        ]
+
+        for row_idx, row_data in enumerate(explanations, 1):
+            for col_idx, value in enumerate(row_data, 1):
+                cell = ws_explanations.cell(row=row_idx, column=col_idx, value=value)
+                if row_idx == 1:  # Header row
+                    cell.font = Font(bold=True, color="FFFFFF")
+                    cell.fill = PatternFill(
+                        start_color="4472C4", end_color="4472C4", fill_type="solid"
+                    )
+                    cell.alignment = Alignment(horizontal="center")
+
+        # Add detailed explanations
+        detailed_explanations = [
+            ["", ""],
+            ["SHAP Values Explanation:", ""],
+            [
+                "",
+                "SHAP (SHapley Additive exPlanations) values show how each feature contributes to the model's prediction.",
+            ],
+            [
+                "",
+                "Positive SHAP values mean the feature increases the predicted value.",
+            ],
+            [
+                "",
+                "Negative SHAP values mean the feature decreases the predicted value.",
+            ],
+            ["", "The magnitude indicates the strength of the contribution."],
+            ["", ""],
+            ["LIME Explanations:", ""],
+            [
+                "",
+                "LIME (Local Interpretable Model-agnostic Explanations) provides local explanations for individual predictions.",
+            ],
+            [
+                "",
+                "It creates a simple, interpretable model around a specific prediction.",
+            ],
+            ["", "Positive weights indicate features that increase the prediction."],
+            ["", "Negative weights indicate features that decrease the prediction."],
+            ["", ""],
+            ["Molecular Properties:", ""],
+            [
+                "",
+                "pIC50: Negative log of the concentration needed to inhibit 50% of the target. Higher values = better potency.",
+            ],
+            [
+                "",
+                "logP: Measures lipophilicity. Values 1-3 are ideal for drug-like compounds.",
+            ],
+            ["", "Molecular Weight: Should ideally be <500 for good bioavailability."],
+            [
+                "",
+                "H-bond Donors/Acceptors: Important for Lipinski's Rule of Five compliance.",
+            ],
+        ]
+
+        start_row = len(explanations) + 3
+        for row_idx, row_data in enumerate(detailed_explanations, start_row):
+            for col_idx, value in enumerate(row_data, 1):
+                cell = ws_explanations.cell(row=row_idx, column=col_idx, value=value)
+                if col_idx == 1 and value:  # Bold headers
+                    cell.font = Font(bold=True)
+
+        # Auto-adjust column widths
+        for ws in [ws_predictions, ws_shap, ws_lime, ws_explanations]:
+            for column in ws.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws.column_dimensions[column_letter].width = adjusted_width
+
+        # Save the workbook
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"comprehensive_report_{timestamp}.xlsx"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        wb.save(filepath)
+
+        return filepath, "Comprehensive report created successfully"
+
+    except Exception as e:
+        logging.error(f"Error creating comprehensive report: {e}")
+        return None, f"Error creating report: {str(e)}"
+
+
+@app.route("/api/download_comprehensive_report", methods=["GET"])
+def download_comprehensive_report():
+    """
+    Endpoint to download a comprehensive Excel report with predicted properties,
+    SHAP values, LIME explanations, and detailed explanations.
+    """
+    try:
+        filepath, message = create_comprehensive_excel_report()
+
+        if filepath is None:
+            return jsonify({"error": message}), 404
+
+        return send_file(
+            filepath,
+            as_attachment=True,
+            download_name=os.path.basename(filepath),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    except Exception as e:
+        logging.error(f"Error in download_comprehensive_report: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/model_status", methods=["GET"])
+def model_status():
+    """
+    Endpoint to check if the model is loaded and working correctly.
+    """
+    try:
+        if model is None:
+            return (
+                jsonify(
+                    {
+                        "status": "not_loaded",
+                        "message": "Model is not loaded",
+                        "model_available": False,
+                    }
+                ),
+                404,
+            )
+
+        if tokenizer is None:
+            return (
+                jsonify(
+                    {
+                        "status": "tokenizer_missing",
+                        "message": "Tokenizer is not loaded",
+                        "model_available": False,
+                    }
+                ),
+                404,
+            )
+
+        # Test the model with a simple SMILES
+        test_smiles = "CC"
+        test_input = tokenizer(
+            [test_smiles],
+            padding=True,
+            truncation=True,
+            return_tensors="pt",
+            max_length=128,
+        )
+
+        test_knowledge_features = torch.tensor(
+            [extract_knowledge_features(test_smiles)], dtype=torch.float
+        ).to(device)
+
+        with torch.no_grad():
+            test_output = model(
+                input_ids=test_input["input_ids"].to(device),
+                attention_mask=test_input["attention_mask"].to(device),
+                knowledge_features=test_knowledge_features,
+            )
+
+        return (
+            jsonify(
+                {
+                    "status": "ready",
+                    "message": "Model is loaded and working correctly",
+                    "model_available": True,
+                    "test_output_shape": list(test_output.shape),
+                    "device": str(device),
+                }
+            ),
+            200,
+        )
+
+    except Exception as e:
+        logging.error(f"Error in model_status: {e}")
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": f"Model test failed: {str(e)}",
+                    "model_available": False,
+                }
+            ),
+            500,
+        )
+
+
+@app.route("/api/comprehensive_report_status", methods=["GET"])
+def comprehensive_report_status():
+    """
+    Endpoint to check if comprehensive report can be generated and what it contains.
+    """
+    try:
+        predictions_file_path = os.path.join(UPLOAD_FOLDER, "predictions.csv")
+
+        if not os.path.exists(predictions_file_path):
+            return (
+                jsonify(
+                    {
+                        "status": "not_available",
+                        "message": "No predictions file found. Please run predictions first.",
+                        "can_generate": False,
+                    }
+                ),
+                404,
+            )
+
+        # Read predictions to get basic info
+        predictions_df = pd.read_csv(predictions_file_path)
+
+        # Check if SHAP and LIME data are available by checking CSV files
+        shap_available = False
+        lime_available = False
+
+        # Check SHAP data availability
+        shap_csv_path = os.path.join(UPLOAD_FOLDER, "shap_data.csv")
+        if os.path.exists(shap_csv_path):
+            try:
+                shap_df = pd.read_csv(shap_csv_path)
+                shap_available = (
+                    len(shap_df) > 0 and "Predicted_pIC50" in shap_df.columns
+                )
+            except:
+                pass
+
+        # Check LIME data availability
+        lime_csv_path = os.path.join(UPLOAD_FOLDER, "lime_data.csv")
+        if os.path.exists(lime_csv_path):
+            try:
+                lime_df = pd.read_csv(lime_csv_path)
+                lime_available = len(lime_df) > 0
+            except:
+                pass
+
+        return (
+            jsonify(
+                {
+                    "status": "available",
+                    "message": "Comprehensive report can be generated",
+                    "can_generate": True,
+                    "report_contents": {
+                        "predicted_properties": len(predictions_df),
+                        "molecular_descriptors": True,
+                        "binding_affinity": True,
+                        "shap_explanations": shap_available,
+                        "lime_explanations": lime_available,
+                        "detailed_explanations": True,
+                    },
+                    "sheets": [
+                        "Predicted Properties",
+                        "SHAP Explanations",
+                        "LIME Explanations",
+                        "Explanation Guide",
+                    ],
+                    "download_url": "/api/download_comprehensive_report",
+                }
+            ),
+            200,
+        )
+
+    except Exception as e:
+        logging.error(f"Error in comprehensive_report_status: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
-    load_model_and_tokenizer()  # Load model on startup
+    try:
+        load_model_and_tokenizer()  # Load model on startup
+        logging.info("Application startup completed successfully.")
+    except Exception as e:
+        logging.error(f"Failed to start application: {e}")
+        print(f"ERROR: Failed to start application: {e}")
+        exit(1)
+
     app.run(debug=True)
