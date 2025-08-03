@@ -6,7 +6,7 @@ import { FaBars, FaTimes, FaSun, FaMoon } from "react-icons/fa";
 
 const Navbar: React.FC = () => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
-  const [isDark, setIsDark] = useState<boolean>(false);
+  const [isDark, setIsDark] = useState<boolean>(true); // Start in dark mode by default
 
   const toggleMenu = () => {
     setIsOpen(!isOpen);
@@ -27,12 +27,13 @@ const Navbar: React.FC = () => {
   }, [isDark]);
 
   useEffect(() => {
-    // Check local storage for theme preference
+    // Check local storage for theme preference, but default to dark mode
     const storedTheme = localStorage.getItem("theme");
-    if (storedTheme === "dark") {
-      setIsDark(true);
-    } else {
+    if (storedTheme === "light") {
       setIsDark(false);
+    } else {
+      // Default to dark mode if no preference or if preference is dark
+      setIsDark(true);
     }
   }, []);
 

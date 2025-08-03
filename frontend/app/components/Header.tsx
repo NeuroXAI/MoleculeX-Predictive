@@ -16,7 +16,7 @@ const Header = () => {
   };
 
   return (
-    <header className="flex items-center justify-between bg-zinc-900 p-4 rounded-lg shadow-lg">
+    <header className="flex items-center justify-between bg-zinc-900 p-4 rounded-lg shadow-lg sticky top-0 z-30">
       {/* Search Bar */}
       <div className="relative flex items-center bg-[#202020] rounded-full px-4 py-2 w-1/2 header-search">
         <FaSearch className="text-gray-400 mr-2" />
