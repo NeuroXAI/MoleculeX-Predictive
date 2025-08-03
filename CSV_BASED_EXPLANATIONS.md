@@ -2,11 +2,11 @@
 
 ## Problem
 
-Multiple frontend components were continuously polling the SHAP and LIME status endpoints (`/shap_status` and `/lime_status`), causing unnecessary backend load and delays.
+Multiple frontend components were continuously polling the SHAP and LIME status endpoints (`/shap_status` and `/lime_status`), causing unnecessary backend load and delays. Additionally, SHAP and LIME computations were being triggered multiple times from different endpoints, leading to redundant processing.
 
 ## Solution
 
-Implemented a CSV-based system where explanation data is saved to CSV files (like `predictions.csv`) and fetched from dedicated endpoints, eliminating the need for continuous polling.
+Implemented a CSV-based system where explanation data is saved to CSV files (like `predictions.csv`) and fetched from dedicated endpoints, eliminating the need for continuous polling. Added intelligent caching to prevent multiple computations.
 
 ## Changes Made
 
@@ -14,7 +14,7 @@ Implemented a CSV-based system where explanation data is saved to CSV files (lik
 
 #### 1. SHAP Function Updates
 
-- **Modified `explain_shap_as_json()`**: Now saves SHAP data to `shap_data.csv`
+- **Modified `explain_shap_as_json()`**: Now checks for existing CSV data first and only computes SHAP if the CSV doesn't exist or is outdated
 - **New endpoint `/api/shap_data`**: Fetches SHAP data from CSV file
 - **Data structure**:
   ```csv
@@ -25,7 +25,7 @@ Implemented a CSV-based system where explanation data is saved to CSV files (lik
 
 #### 2. LIME Function Updates
 
-- **Modified `explain_lime_as_json()`**: Now saves LIME data to `lime_data.csv`
+- **Modified `explain_lime_as_json()`**: Now checks for existing CSV data first and only computes LIME if the CSV doesn't exist or is outdated
 - **New endpoint `/api/lime_data`**: Fetches LIME data from CSV file
 - **Data structure**:
   ```csv
@@ -34,6 +34,17 @@ Implemented a CSV-based system where explanation data is saved to CSV files (lik
   Predicted_logP, -0.456, 0, 0.234
   Predicted_num_atoms, 0.789, 0, 0.234
   ```
+
+#### 3. Automatic Computation
+
+- **Modified `run_predictions()`**: Automatically triggers SHAP and LIME computation after predictions complete
+- **CSV Cleanup**: Clears old explanation CSV files when new predictions start
+- **Background Processing**: Both SHAP and LIME run in background threads to avoid blocking
+
+#### 4. Comprehensive Report Optimization
+
+- **Modified `comprehensive_report_status()`**: Now checks CSV files instead of calling SHAP/LIME functions directly
+- **Modified `create_comprehensive_excel_report()`**: Uses CSV data instead of calling SHAP/LIME functions directly
 
 ### Frontend Changes
 
@@ -62,82 +73,62 @@ Implemented a CSV-based system where explanation data is saved to CSV files (lik
 1. **`GET /api/shap_data`**
 
    - Returns SHAP explanation data from `shap_data.csv`
-   - Response: `{features, shap_values, base_values, sample_count}`
+   - No computation required - just reads from CSV
+   - Returns 404 if CSV doesn't exist
 
 2. **`GET /api/lime_data`**
+
    - Returns LIME explanation data from `lime_data.csv`
-   - Response: `{feature_names, weights, base_value, sample_count}`
+   - No computation required - just reads from CSV
+   - Returns 404 if CSV doesn't exist
 
-### Legacy Endpoints (Still Available)
+### Modified Endpoints
 
-- `GET /shap_status` - For backward compatibility
-- `GET /lime_status` - For backward compatibility
+1. **`POST /explain_predictions`**
 
-## Benefits
+   - Now triggers both SHAP and LIME computation
+   - Uses existing predictions.csv instead of requiring file upload
+   - Runs both explanations in background threads
 
-### 1. Performance
+## Performance Improvements
 
-- **Eliminated continuous polling**: No more background requests every 5 seconds
-- **Reduced server load**: Fewer API calls to status endpoints
-- **Faster data access**: Direct CSV file access instead of status checking
+### Before
 
-### 2. Reliability
+- Multiple SHAP computations triggered from different endpoints
+- Continuous polling from frontend components
+- Redundant processing for same prediction data
+- Slow response times due to repeated computations
 
-- **Persistent data**: Explanation data is saved to CSV files
-- **No data loss**: Data persists between server restarts
-- **Consistent format**: CSV format is human-readable and debuggable
+### After
 
-### 3. Scalability
-
-- **Reduced network traffic**: No more polling loops
-- **Better resource utilization**: Server resources not wasted on status checks
-- **Easier debugging**: CSV files can be inspected directly
+- Single SHAP/LIME computation per prediction run
+- CSV-based caching prevents redundant processing
+- No polling - direct data access from CSV
+- Automatic computation triggered after predictions
+- Immediate data availability for frontend components
 
 ## File Structure
 
 ```
-Model/src/Transformer_model/uploads/
-├── predictions.csv          # Model predictions
-├── shap_data.csv           # SHAP explanation data
-└── lime_data.csv           # LIME explanation data
+uploads/
+├── predictions.csv          # Main prediction results
+├── shap_data.csv           # Cached SHAP explanations
+└── lime_data.csv           # Cached LIME explanations
 ```
 
 ## Usage Flow
 
-### Before (Polling System)
+1. **User uploads data for prediction**
+2. **Predictions are computed and saved to `predictions.csv`**
+3. **SHAP and LIME automatically computed in background**
+4. **Results saved to `shap_data.csv` and `lime_data.csv`**
+5. **Frontend components fetch data directly from CSV endpoints**
+6. **No more polling or redundant computations**
 
-1. Frontend calls `/start_shap_explanation`
-2. Frontend polls `/shap_status` every 5 seconds
-3. When status is "completed", frontend processes data
-4. Multiple components poll simultaneously
+## Benefits
 
-### After (CSV System)
-
-1. Frontend calls `/start_shap_explanation`
-2. Backend processes and saves to `shap_data.csv`
-3. Frontend fetches from `/api/shap_data` once
-4. Data is immediately available to all components
-
-## Error Handling
-
-- **Missing CSV files**: Return 404 with descriptive error message
-- **Invalid data format**: Return 500 with error details
-- **Frontend fallback**: Graceful error handling in components
-
-## Migration Notes
-
-- **Backward compatibility**: Old status endpoints still work
-- **Gradual migration**: Components can be updated one by one
-- **No breaking changes**: Existing functionality preserved
-
-## Testing
-
-To test the new system:
-
-1. Upload a dataset and run predictions
-2. Trigger SHAP/LIME explanations
-3. Check that CSV files are created in `uploads/` directory
-4. Verify frontend components load data correctly
-5. Confirm no more continuous polling in browser network tab
-
-The CSV-based system provides a more efficient, reliable, and scalable approach to explanation data management.
+- **Reduced Server Load**: No more multiple SHAP computations
+- **Faster Response Times**: Direct CSV access instead of computation
+- **Better User Experience**: Immediate data availability
+- **Resource Efficiency**: Single computation per prediction run
+- **Scalability**: CSV-based system can handle multiple concurrent users
