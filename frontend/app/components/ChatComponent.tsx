@@ -41,48 +41,44 @@ const ChatComponent = () => {
   useEffect(() => {
     const fetchLimeData = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:5000/lime_status");
+        const response = await fetch("http://127.0.0.1:5000/api/lime_data");
         const data = await response.json();
 
-        if (data.status === "completed") {
-          // Parse the LIME explanation weights into chart-compatible format
-          const barChartData = data.result.weights.map(([feature, weight]) => ({
-            label: feature,
-            value: Math.abs(weight), // Use absolute values for bar height
-          }));
-
-          // Update state with the fetched LIME data
-          setLimeData(barChartData);
-
-          // Append a new message explaining the LIME output
-          const explanationMessage = {
-            sender: "system",
-            text: `The LIME explanation shows the following feature impacts:\n\n${data.result.weights
-              .map(
-                ([feature, weight]) =>
-                  `• ${feature}: ${weight > 0 ? "+" : ""}${(
-                    weight * 100
-                  ).toFixed(2)}% impact`
-              )
-              .join("\n")}\n\nKey features are displayed in the chart below.`,
-          };
-          setMessages((prev) => [...prev, explanationMessage]);
-          setLoadingLime(false);
-        } else if (data.status === "error") {
-          setMessages((prev) => [
-            ...prev,
-            { sender: "system", text: "Error fetching LIME explanation." },
-          ]);
-          setLoadingLime(false);
-        } else {
+        if (data.error) {
           setMessages((prev) => [
             ...prev,
             {
               sender: "system",
-              text: "LIME explanation is still processing...",
+              text: `Error fetching LIME explanation: ${data.error}`,
             },
           ]);
+          setLoadingLime(false);
+          return;
         }
+
+        // Parse the LIME explanation weights into chart-compatible format
+        const barChartData = data.weights.map((weight, index) => ({
+          label: data.feature_names[index],
+          value: Math.abs(weight), // Use absolute values for bar height
+        }));
+
+        // Update state with the fetched LIME data
+        setLimeData(barChartData);
+
+        // Append a new message explaining the LIME output
+        const explanationMessage = {
+          sender: "system",
+          text: `The LIME explanation shows the following feature impacts:\n\n${data.weights
+            .map(
+              (weight, index) =>
+                `• ${data.feature_names[index]}: ${weight > 0 ? "+" : ""}${(
+                  weight * 100
+                ).toFixed(2)}% impact`
+            )
+            .join("\n")}\n\nKey features are displayed in the chart below.`,
+        };
+        setMessages((prev) => [...prev, explanationMessage]);
+        setLoadingLime(false);
       } catch (err) {
         setMessages((prev) => [
           ...prev,
@@ -93,52 +89,47 @@ const ChatComponent = () => {
 
     const fetchShapData = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:5000/shap_status");
+        const response = await fetch("http://127.0.0.1:5000/api/shap_data");
         const data = await response.json();
 
-        if (data.status === "completed") {
-          // Process SHAP data
-          const shapResult = data.result;
-          const features = shapResult.features;
-          const shapValues = shapResult.shap_values[0][0]; // Assuming first sample
-
-          // Structure data for visualization
-          const shapChartData = features.map((feature, index) => ({
-            label: feature,
-            value: shapValues[index],
-          }));
-
-          setShapData(shapChartData);
-
-          // Append a new message explaining the SHAP output
-          const shapExplanationMessage = {
-            sender: "system",
-            text: `The SHAP explanation provides detailed insights into feature impacts for the prediction:\n\n${features
-              .map(
-                (feature, index) =>
-                  `• ${feature}: ${shapValues[index] > 0 ? "+" : ""}${(
-                    shapValues[index] * 100
-                  ).toFixed(2)}% impact`
-              )
-              .join("\n")}\n\nKey features are displayed in the chart below.`,
-          };
-          setMessages((prev) => [...prev, shapExplanationMessage]);
-          setLoadingShap(false);
-        } else if (data.status === "error") {
-          setMessages((prev) => [
-            ...prev,
-            { sender: "system", text: "Error fetching SHAP explanation." },
-          ]);
-          setLoadingShap(false);
-        } else {
+        if (data.error) {
           setMessages((prev) => [
             ...prev,
             {
               sender: "system",
-              text: "SHAP explanation is still processing...",
+              text: `Error fetching SHAP explanation: ${data.error}`,
             },
           ]);
+          setLoadingShap(false);
+          return;
         }
+
+        // Process SHAP data
+        const features = data.features;
+        const shapValues = data.shap_values[0]; // First sample
+
+        // Structure data for visualization
+        const shapChartData = features.map((feature, index) => ({
+          label: feature,
+          value: shapValues[index],
+        }));
+
+        setShapData(shapChartData);
+
+        // Append a new message explaining the SHAP output
+        const shapExplanationMessage = {
+          sender: "system",
+          text: `The SHAP explanation provides detailed insights into feature impacts for the prediction:\n\n${features
+            .map(
+              (feature, index) =>
+                `• ${feature}: ${shapValues[index] > 0 ? "+" : ""}${(
+                  shapValues[index] * 100
+                ).toFixed(2)}% impact`
+            )
+            .join("\n")}\n\nKey features are displayed in the chart below.`,
+        };
+        setMessages((prev) => [...prev, shapExplanationMessage]);
+        setLoadingShap(false);
       } catch (err) {
         setMessages((prev) => [
           ...prev,
