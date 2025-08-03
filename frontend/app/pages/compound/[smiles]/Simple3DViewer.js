@@ -3,9 +3,11 @@
 import React, { useEffect, useState, useRef } from "react";
 import { FaExpand, FaCompress, FaRedo, FaDownload, FaExclamationTriangle } from "react-icons/fa";
 
-export default function Alternative3DViewer({ sdf, viewerRef }) {
+export default function Simple3DViewer({ sdf, viewerRef }) {
     const [isFullscreen, setIsFullscreen] = useState(false);
-    const [viewer, setViewer] = useState(null);
+    const [scene, setScene] = useState(null);
+    const [renderer, setRenderer] = useState(null);
+    const [camera, setCamera] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
     const [isMounted, setIsMounted] = useState(false);
@@ -25,143 +27,170 @@ export default function Alternative3DViewer({ sdf, viewerRef }) {
                 setError(null);
                 setIsLoading(true);
 
-                // Load NGL Viewer if not already loaded
-                if (!window.NGL) {
-                    await loadNGLScript();
+                // Load Three.js if not already loaded
+                if (!window.THREE) {
+                    await loadThreeJSScript();
                 }
 
                 if (!viewerRef.current) {
                     throw new Error("Viewer container not found");
                 }
 
-                // Clear any existing viewer
-                if (viewer) {
+                // Clear any existing scene
+                if (scene) {
                     try {
-                        viewer.dispose();
+                        renderer.dispose();
                     } catch (e) {
-                        console.warn("Error disposing viewer:", e);
+                        console.warn("Error disposing renderer:", e);
                     }
                 }
 
-                // Create NGL viewer
-                const viewerInstance = new window.NGL.Stage(viewerRef.current, {
-                    backgroundColor: "#1f2937",
-                    quality: "medium",
-                    antialias: true
+                // Create Three.js scene
+                const newScene = new window.THREE.Scene();
+                newScene.background = new window.THREE.Color("#1f2937");
+
+                // Create camera
+                const newCamera = new window.THREE.PerspectiveCamera(
+                    75,
+                    viewerRef.current.clientWidth / viewerRef.current.clientHeight,
+                    0.1,
+                    1000
+                );
+                newCamera.position.z = 5;
+
+                // Create renderer
+                const newRenderer = new window.THREE.WebGLRenderer({ antialias: true });
+                newRenderer.setSize(viewerRef.current.clientWidth, viewerRef.current.clientHeight);
+                newRenderer.setClearColor("#1f2937");
+                viewerRef.current.innerHTML = '';
+                viewerRef.current.appendChild(newRenderer.domElement);
+
+                // Parse SDF and create simple molecular representation
+                const atoms = parseSDF(sdf);
+
+                // Create atom spheres
+                atoms.forEach((atom, index) => {
+                    const geometry = new window.THREE.SphereGeometry(0.3, 16, 16);
+                    const material = new window.THREE.MeshPhongMaterial({
+                        color: getAtomColor(atom.element),
+                        shininess: 100
+                    });
+                    const sphere = new window.THREE.Mesh(geometry, material);
+
+                    // Position atoms in a simple layout
+                    const angle = (index / atoms.length) * Math.PI * 2;
+                    const radius = 2;
+                    sphere.position.x = Math.cos(angle) * radius;
+                    sphere.position.y = Math.sin(angle) * radius;
+                    sphere.position.z = 0;
+
+                    newScene.add(sphere);
                 });
 
-                // Add the SDF structure using the correct NGL API
-                try {
-                    // Create a blob from the SDF data
-                    const blob = new Blob([sdf], { type: "chemical/x-mdl-molfile" });
-                    
-                    // Load the structure using loadFile method
-                    const structure = await viewerInstance.loadFile(blob, { ext: "sdf" });
-                    
-                    // Add ball+stick representation to the loaded structure
-                    if (structure && structure.length > 0) {
-                        const mol = structure[0];
-                        mol.addRepresentation("ball+stick", {
-                            color: "element",
-                            radius: 0.5
-                        });
-                        
-                        // Add surface representation
-                        mol.addRepresentation("surface", {
-                            opacity: 0.3,
-                            color: "element"
-                        });
-                    }
+                // Add lighting
+                const ambientLight = new window.THREE.AmbientLight(0x404040, 0.6);
+                newScene.add(ambientLight);
 
-                    viewerInstance.autoView();
-                    setViewer(viewerInstance);
-                    setIsLoading(false);
+                const directionalLight = new window.THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(1, 1, 1);
+                newScene.add(directionalLight);
 
-                } catch (modelError) {
-                    console.warn("Failed to load SDF, trying alternative approach:", modelError);
+                // Animation loop
+                const animate = () => {
+                    requestAnimationFrame(animate);
+                    newRenderer.render(newScene, newCamera);
+                };
+                animate();
 
-                    // Try with different format
-                    try {
-                        const blob = new Blob([sdf], { type: "chemical/x-mdl-molfile" });
-                        const structure = await viewerInstance.loadFile(blob, { ext: "mol" });
-                        
-                        if (structure && structure.length > 0) {
-                            const mol = structure[0];
-                            mol.addRepresentation("ball+stick", {
-                                color: "element",
-                                radius: 0.5
-                            });
-                            
-                            mol.addRepresentation("surface", {
-                                opacity: 0.3,
-                                color: "element"
-                            });
-                        }
-
-                        viewerInstance.autoView();
-                        setViewer(viewerInstance);
-                        setIsLoading(false);
-                    } catch (secondError) {
-                        console.error("Both SDF and MOL formats failed:", secondError);
-                        
-                        // Try with direct structure creation
-                        try {
-                            const structure = new window.NGL.Structure();
-                            structure.load(sdf);
-                            
-                            const component = viewerInstance.addComponentFromObject(structure);
-                            component.addRepresentation("ball+stick", {
-                                color: "element",
-                                radius: 0.5
-                            });
-                            
-                            viewerInstance.autoView();
-                            setViewer(viewerInstance);
-                            setIsLoading(false);
-                        } catch (thirdError) {
-                            console.error("All loading methods failed:", thirdError);
-                            throw new Error("Failed to load molecular structure");
-                        }
-                    }
-                }
+                setScene(newScene);
+                setRenderer(newRenderer);
+                setCamera(newCamera);
+                setIsLoading(false);
 
             } catch (error) {
-                console.error("Error initializing Alternative3DViewer:", error);
-                setError("Failed to load 3D structure with alternative viewer");
+                console.error("Error initializing Simple3DViewer:", error);
+                setError("Failed to load 3D structure with simple viewer");
                 setIsLoading(false);
             }
         };
 
-        const loadNGLScript = () => {
+        const loadThreeJSScript = () => {
             return new Promise((resolve, reject) => {
-                if (window.NGL) {
+                if (window.THREE) {
                     resolve();
                     return;
                 }
 
                 const script = document.createElement("script");
-                script.src = "https://unpkg.com/ngl@0.10.4/dist/ngl.js";
+                script.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
                 script.async = true;
                 script.onload = () => {
-                    console.log("NGL Viewer loaded successfully");
+                    console.log("Three.js loaded successfully");
                     resolve();
                 };
                 script.onerror = () => {
-                    console.error("Failed to load NGL Viewer");
-                    reject(new Error("Failed to load NGL Viewer"));
+                    console.error("Failed to load Three.js");
+                    reject(new Error("Failed to load Three.js"));
                 };
                 document.head.appendChild(script);
             });
         };
 
+        const parseSDF = (sdfData) => {
+            const atoms = [];
+            const lines = sdfData.split('\n');
+
+            // Simple SDF parsing - look for atom lines
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (line.trim() && !isNaN(line.substring(0, 10).trim())) {
+                    // This might be an atom line
+                    const parts = line.split(/\s+/);
+                    if (parts.length >= 4) {
+                        const x = parseFloat(parts[0]);
+                        const y = parseFloat(parts[1]);
+                        const z = parseFloat(parts[2]);
+                        const element = parts[3];
+
+                        if (!isNaN(x) && !isNaN(y) && !isNaN(z) && element) {
+                            atoms.push({ x, y, z, element });
+                        }
+                    }
+                }
+            }
+
+            // If no atoms found, create a simple representation
+            if (atoms.length === 0) {
+                atoms.push({ x: 0, y: 0, z: 0, element: 'C' });
+            }
+
+            return atoms;
+        };
+
+        const getAtomColor = (element) => {
+            const colors = {
+                'C': 0x808080, // Gray
+                'H': 0xffffff, // White
+                'O': 0xff0000, // Red
+                'N': 0x0000ff, // Blue
+                'S': 0xffff00, // Yellow
+                'P': 0xffa500, // Orange
+                'F': 0x00ff00, // Green
+                'Cl': 0x00ff00, // Green
+                'Br': 0x8b4513, // Brown
+                'I': 0x800080   // Purple
+            };
+            return colors[element] || 0xcccccc;
+        };
+
         initializeViewer();
 
         return () => {
-            if (viewer) {
+            if (renderer) {
                 try {
-                    viewer.dispose();
+                    renderer.dispose();
                 } catch (e) {
-                    console.warn("Error disposing viewer:", e);
+                    console.warn("Error disposing renderer:", e);
                 }
             }
         };
@@ -195,9 +224,10 @@ export default function Alternative3DViewer({ sdf, viewerRef }) {
     };
 
     const resetView = () => {
-        if (viewer) {
+        if (camera) {
             try {
-                viewer.autoView();
+                camera.position.set(0, 0, 5);
+                camera.lookAt(0, 0, 0);
             } catch (error) {
                 console.error("Reset view error:", error);
             }
@@ -205,15 +235,12 @@ export default function Alternative3DViewer({ sdf, viewerRef }) {
     };
 
     const downloadStructure = () => {
-        if (viewer) {
+        if (renderer) {
             try {
-                const canvas = viewerRef.current.querySelector('canvas');
-                if (canvas) {
-                    const link = document.createElement('a');
-                    link.download = 'molecule-3d-ngl.png';
-                    link.href = canvas.toDataURL();
-                    link.click();
-                }
+                const link = document.createElement('a');
+                link.download = 'molecule-3d-simple.png';
+                link.href = renderer.domElement.toDataURL();
+                link.click();
             } catch (error) {
                 console.error("Download error:", error);
             }
@@ -231,7 +258,7 @@ export default function Alternative3DViewer({ sdf, viewerRef }) {
             <div className="flex items-center justify-center h-full bg-gray-800 rounded-lg">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-2"></div>
-                    <p className="text-gray-400 text-sm">Loading alternative 3D viewer...</p>
+                    <p className="text-gray-400 text-sm">Loading simple 3D viewer...</p>
                 </div>
             </div>
         );
@@ -242,7 +269,7 @@ export default function Alternative3DViewer({ sdf, viewerRef }) {
             <div className="flex items-center justify-center h-full bg-gray-800 rounded-lg">
                 <div className="text-center">
                     <FaExclamationTriangle className="text-red-400 text-4xl mb-4 mx-auto" />
-                    <p className="text-gray-300 mb-2">Alternative 3D Viewer Unavailable</p>
+                    <p className="text-gray-300 mb-2">Simple 3D Viewer Unavailable</p>
                     <p className="text-gray-500 text-sm mb-4">{error}</p>
                     <button
                         onClick={retryLoading}
@@ -287,7 +314,7 @@ export default function Alternative3DViewer({ sdf, viewerRef }) {
                 <div className="absolute inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-20">
                     <div className="text-center">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-2"></div>
-                        <p className="text-gray-300 text-sm">Loading alternative 3D structure...</p>
+                        <p className="text-gray-300 text-sm">Loading simple 3D structure...</p>
                     </div>
                 </div>
             )}
@@ -301,7 +328,7 @@ export default function Alternative3DViewer({ sdf, viewerRef }) {
 
             {/* Instructions overlay */}
             <div className="absolute bottom-2 left-2 text-gray-400 text-xs">
-                <p>Drag to rotate • Scroll to zoom • Right-click for menu (NGL Viewer)</p>
+                <p>Simple 3D representation using Three.js</p>
             </div>
         </div>
     );

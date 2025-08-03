@@ -8,17 +8,18 @@ export default function NetworkGraph({ molecule = {} }) {
         const atoms = molecule?.atoms || [];
         const bonds = molecule?.bonds || [];
 
-        // Handle invalid data
-        if (atoms.length === 0 || bonds.length === 0) {
-            console.warn("Invalid molecule data: missing atoms or bonds", molecule);
-            d3.select(ref.current).selectAll("*").remove(); // Clear previous content
+        // Handle invalid data with better fallback
+        if (atoms.length === 0) {
+            console.warn("Invalid molecule data: missing atoms", molecule);
+            d3.select(ref.current).selectAll("*").remove();
             d3.select(ref.current)
                 .append("text")
                 .attr("x", "50%")
                 .attr("y", "50%")
                 .attr("text-anchor", "middle")
-                .attr("fill", "red")
-                .text("Invalid molecule data: missing atoms or bonds.");
+                .attr("fill", "#666")
+                .attr("font-size", "14px")
+                .text("No molecular data available");
             return;
         }
 
@@ -27,8 +28,8 @@ export default function NetworkGraph({ molecule = {} }) {
 
         // Dimensions
         const container = ref.current.parentNode;
-        const width = container.offsetWidth || 600; // Container width
-        const height = container.offsetHeight || 600; // Container height
+        const width = container.offsetWidth || 600;
+        const height = container.offsetHeight || 600;
 
         // SVG setup
         const svg = d3.select(ref.current)
@@ -51,10 +52,22 @@ export default function NetworkGraph({ molecule = {} }) {
             target: bond.endAtomIndex,
         }));
 
+        // If no bonds, create a simple circular layout
+        if (bonds.length === 0 && atoms.length > 1) {
+            console.warn("No bonds found, creating simple layout");
+            // Create simple circular bonds for visualization
+            for (let i = 0; i < atoms.length; i++) {
+                links.push({
+                    source: i,
+                    target: (i + 1) % atoms.length
+                });
+            }
+        }
+
         // Calculate scaling factor and offsets to center the graph
-        const scaleFactor = Math.min(width / 600, height / 600); // Scale to fit the container
-        const offsetX = (width - 600 * scaleFactor) / 2; // Center horizontally
-        const offsetY = (height - 600 * scaleFactor) / 2; // Center vertically
+        const scaleFactor = Math.min(width / 600, height / 600);
+        const offsetX = (width - 600 * scaleFactor) / 2;
+        const offsetY = (height - 600 * scaleFactor) / 2;
 
         // Apply transformations
         const graphGroup = svg.append("g")
@@ -64,7 +77,7 @@ export default function NetworkGraph({ molecule = {} }) {
         const simulation = d3.forceSimulation(nodes)
             .force("link", d3.forceLink(links).id((d) => d.id).distance(50))
             .force("charge", d3.forceManyBody().strength(-300))
-            .force("center", d3.forceCenter(300, 300)) // Center relative to the original 600x600 size
+            .force("center", d3.forceCenter(300, 300))
             .on("tick", ticked);
 
         // Draw links (edges)
@@ -111,7 +124,7 @@ export default function NetworkGraph({ molecule = {} }) {
 
             label
                 .attr("x", (d) => d.x)
-                .attr("y", (d) => d.y - 15); // Adjust label position slightly above node
+                .attr("y", (d) => d.y - 15);
         }
 
         // Drag handlers
