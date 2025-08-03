@@ -1,13 +1,23 @@
-"use client"; // Mark this as a Client Component
+"use client";
 
 import { useState, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
-import Plotly from "plotly.js-basic-dist"; // Import Plotly directly
-import axios from "axios"; // For making HTTP requests
-import { FaUpload, FaDownload } from "react-icons/fa"; // Optional: Icons for buttons
+import axios from "axios";
+import { FaUpload, FaDownload } from "react-icons/fa";
 
-// Dynamically import react-plotly.js to prevent SSR issues
-const PlotlyChart = dynamic(() => import("react-plotly.js"), { ssr: false });
+// Dynamically import Plotly components to prevent SSR issues
+const PlotlyChart = dynamic(() => import("react-plotly.js"), {
+  ssr: false,
+  loading: () => <div className="h-64 bg-zinc-800 rounded animate-pulse" />,
+});
+
+// Dynamically import Plotly to prevent SSR issues
+const Plotly = dynamic(
+  () => import("plotly.js-basic-dist").then((mod) => ({ default: mod })),
+  {
+    ssr: false,
+  }
+);
 
 const ShapExplanationChart = () => {
   const [status, setStatus] = useState("idle"); // "idle" | "running" | "completed" | "error"
@@ -21,57 +31,54 @@ const ShapExplanationChart = () => {
   const fileInputRef = useRef(null); // Reference to the hidden file input
   const plotRef = useRef(null); // Reference to the Plotly chart
 
-  const fetchShapStatus = async () => {
+  const fetchShapData = async () => {
     try {
-      const response = await axios.get("http://127.0.0.1:5000/shap_status");
+      const response = await axios.get("http://127.0.0.1:5000/api/shap_data");
       const data = response.data;
 
-      setStatus(data.status);
-      setMessage(data.message);
-
-      if (data.status === "completed") {
-        const { shap_values, features: featureNames } = data.result;
-
-        // Sort features by the average magnitude of their SHAP values and select the top 5
-        const averagedShapValues = shap_values.map(
-          (values) =>
-            values.reduce((sum, val) => sum + Math.abs(val), 0) / values.length
-        );
-        const sortedIndices = averagedShapValues
-          .map((avg, index) => ({ avg, index }))
-          .sort((a, b) => b.avg - a.avg)
-          .slice(0, 5) // Limit to top 5 features
-          .map((item) => item.index);
-
-        const filteredShapValues = sortedIndices.map(
-          (index) => shap_values[index]
-        );
-        const filteredFeatures = sortedIndices.map(
-          (index) => featureNames[index]
-        );
-
-        setShapValues(filteredShapValues);
-        setFeatures(filteredFeatures);
-      } else if (data.status === "error") {
-        setErrorDetail(
-          data.error_detail || "An error occurred during SHAP explanation."
-        );
+      if (data.error) {
+        setStatus("error");
+        setMessage("SHAP data not available.");
+        setErrorDetail(data.error);
+        return;
       }
+
+      const { shap_values, features: featureNames } = data;
+
+      // Sort features by the average magnitude of their SHAP values and select the top 5
+      const averagedShapValues = shap_values.map(
+        (values) =>
+          values.reduce((sum, val) => sum + Math.abs(val), 0) / values.length
+      );
+      const sortedIndices = averagedShapValues
+        .map((avg, index) => ({ avg, index }))
+        .sort((a, b) => b.avg - a.avg)
+        .slice(0, 5) // Limit to top 5 features
+        .map((item) => item.index);
+
+      const filteredShapValues = sortedIndices.map(
+        (index) => shap_values[index]
+      );
+      const filteredFeatures = sortedIndices.map(
+        (index) => featureNames[index]
+      );
+
+      setShapValues(filteredShapValues);
+      setFeatures(filteredFeatures);
+      setStatus("completed");
+      setMessage("SHAP data loaded successfully.");
     } catch (error) {
-      console.error("Error fetching SHAP status:", error);
+      console.error("Error fetching SHAP data:", error);
       setStatus("error");
-      setMessage("Failed to fetch SHAP status.");
-      setErrorDetail(error.message || "Unknown error.");
+      setMessage("Failed to fetch SHAP data.");
+      setErrorDetail(error.response?.data?.error || error.message);
     }
   };
 
   useEffect(() => {
-    fetchShapStatus();
-    const interval = setInterval(() => {
-      fetchShapStatus();
-    }, 5000); // Poll every 5 seconds
-    return () => clearInterval(interval);
-  }, []);
+    // Fetch SHAP data once when component mounts
+    fetchShapData();
+  }, []); // Only run once when component mounts
 
   const uploadShapFile = async (file) => {
     setUploading(true);
@@ -187,6 +194,8 @@ const ShapExplanationChart = () => {
                 uploadShapFile(file);
               }}
               className="hidden"
+              aria-label="Upload CSV file for SHAP analysis"
+              title="Upload CSV file for SHAP analysis"
             />
           </div>
         )}

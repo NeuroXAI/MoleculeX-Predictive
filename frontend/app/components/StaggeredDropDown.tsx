@@ -21,12 +21,12 @@ const StaggeredDropDown: React.FC<StaggeredDropDownProps> = ({
   const modelOptions = [
     {
       text: "Predictive Model",
-      value: "predictive",
+      value: "Predictive Model",
       Icon: FaBrain, // Using Font Awesome Brain Icon
     },
     {
       text: "Generative Model",
-      value: "generative",
+      value: "Generative Model",
       Icon: FaCogs, // Using Font Awesome Cogs Icon
     },
   ];
@@ -55,7 +55,7 @@ const StaggeredDropDown: React.FC<StaggeredDropDownProps> = ({
           onClick={() => setOpen((pv) => !pv)}
           className="flex items-center gap-2 px-6 py-3 rounded-md text-indigo-50 bg-neutral-800 hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-300"
           aria-haspopup="true"
-          aria-expanded={open}
+          aria-expanded={open ? "true" : "false"}
         >
           <span className="font-medium text-sm">{selectedModel}</span>
           <motion.span variants={iconVariants}>
