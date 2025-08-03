@@ -34,16 +34,11 @@ const CustomTooltip = ({
     return (
       <div className="bg-gray-800 text-white p-2 rounded shadow-md">
         <p className="font-semibold">{`${label} (SMILES)`}</p>
-        {payload.map(
-          (
-            item: { name: string; value: number; color: string },
-            index: number
-          ) => (
-            <p key={index} style={{ color: item.color }}>
-              {`${item.name}: ${item.value}`}
-            </p>
-          )
-        )}
+        {payload.map((item, index: number) => (
+          <p key={index} style={{ color: item.color || "#fff" }}>
+            {`${item.name || "Unknown"}: ${item.value}`}
+          </p>
+        ))}
       </div>
     );
   }
@@ -64,9 +59,11 @@ const DynamicMultiBarLineChart = () => {
         console.log("Fetched Chart Data:", response.data); // Debugging line
         setData(response.data);
         setLoading(false);
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error("Error fetching chart data:", err);
-        setError(err.response?.data?.error || "Failed to fetch chart data.");
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to fetch chart data.";
+        setError(errorMessage);
         setLoading(false);
       }
     };

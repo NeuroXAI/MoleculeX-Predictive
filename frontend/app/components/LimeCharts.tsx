@@ -22,33 +22,31 @@ const LimeCharts = () => {
   useEffect(() => {
     const fetchLimeData = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:5000/lime_status");
+        const response = await fetch("http://127.0.0.1:5000/api/lime_data");
         const data = await response.json();
 
-        if (data.status === "completed") {
-          // Extract weights and feature names from the result
-          const weights = data.result.weights.map(([feature, weight]) => ({
-            name: feature,
-            value: Math.abs(weight), // Use absolute weights for comparison
-          }));
-
-          // Prepare Pie Data
-          const pieData = data.result.weights.map(([feature, weight]) => ({
-            name: feature,
-            value: Math.abs(weight), // Use absolute weights
-            color: generateRandomColor(), // Assign a random color to each feature
-          }));
-
-          setLimeData(weights);
-          setPieData(pieData);
+        if (data.error) {
+          setError(data.error);
           setLoading(false);
-        } else if (data.status === "error") {
-          setError(data.message);
-          setLoading(false);
-        } else {
-          setError("LIME explanation is not yet completed.");
-          setLoading(false);
+          return;
         }
+
+        // Extract weights and feature names from the result
+        const weights = data.weights.map((weight, index) => ({
+          name: data.feature_names[index],
+          value: Math.abs(weight), // Use absolute weights for comparison
+        }));
+
+        // Prepare Pie Data
+        const pieData = data.weights.map((weight, index) => ({
+          name: data.feature_names[index],
+          value: Math.abs(weight), // Use absolute weights
+          color: generateRandomColor(), // Assign a random color to each feature
+        }));
+
+        setLimeData(weights);
+        setPieData(pieData);
+        setLoading(false);
       } catch (err) {
         setError("Failed to fetch LIME explanation.");
         setLoading(false);
