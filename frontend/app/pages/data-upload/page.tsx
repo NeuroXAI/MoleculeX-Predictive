@@ -10,7 +10,19 @@ import UploadData from "@/app/components/UploadData";
 import StorageComponent from "@/app/components/StorageComponent";
 import SmilesDataTable from "@/app/components/SmilesDataTable";
 import { Switch } from "@headlessui/react";
-import { FaTrain, FaBrain, FaCalculator, FaCogs } from "react-icons/fa";
+import {
+  FaTrain,
+  FaBrain,
+  FaCalculator,
+  FaCogs,
+  FaUpload,
+  FaFileCsv,
+  FaCheckCircle,
+  FaExclamationTriangle,
+  FaRocket,
+  FaDatabase,
+} from "react-icons/fa";
+import { motion, AnimatePresence } from "framer-motion";
 import StaggeredDropDown from "@/app/components/StaggeredDropDown";
 import CustomTour from "@/app/components/CustomTour";
 import tutorialSteps from "@/app/tutorialSteps";
@@ -18,7 +30,7 @@ import tutorialSteps from "@/app/tutorialSteps";
 const TRAIN_API_URL = "http://localhost:5000/train";
 const PREDICT_API_URL = "http://localhost:5000/predict";
 const MATH_PREDICT_API_URL = "http://localhost:5000/calculate_properties_async";
-const GENERATIVE_API_URL = "http://localhost:5000/generate"; // New Generative API
+const GENERATIVE_API_URL = "http://localhost:5000/generate";
 
 interface SMILESDatum {
   name: string;
@@ -26,11 +38,86 @@ interface SMILESDatum {
   molecularWeight?: string;
   meltingPoint?: string;
   dateAdded?: string;
-  [key: string]: any; // For dynamic properties
+  [key: string]: string | number | undefined;
 }
 
+// Professional Card Component
+const ProfessionalCard = ({
+  title,
+  icon: Icon,
+  children,
+  className = "",
+  gradient = "from-blue-600 to-blue-700",
+}: {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
+  className?: string;
+  gradient?: string;
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.5 }}
+    className={`bg-gradient-to-br from-zinc-900 to-zinc-800 p-6 rounded-2xl shadow-xl border border-zinc-700 ${className}`}
+  >
+    <div className="flex items-center mb-6">
+      <div className={`p-3 bg-gradient-to-r ${gradient} rounded-xl mr-4`}>
+        <Icon className="text-white text-xl" />
+      </div>
+      <h2 className="text-xl font-semibold text-white">{title}</h2>
+    </div>
+    {children}
+  </motion.div>
+);
+
+// Stats Card Component
+const StatsCard = ({
+  title,
+  value,
+  icon: Icon,
+  color = "blue",
+  trend = null,
+}: {
+  title: string;
+  value: string | number;
+  icon: React.ComponentType<{ className?: string }>;
+  color?: string;
+  trend?: { value: number; isPositive: boolean } | null;
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.5 }}
+    className="bg-gradient-to-br from-zinc-900 to-zinc-800 p-6 rounded-2xl shadow-xl border border-zinc-700"
+  >
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-gray-400 text-sm font-medium">{title}</p>
+        <p className="text-2xl font-bold text-white mt-1">{value}</p>
+        {trend && (
+          <div className="flex items-center mt-2">
+            <span
+              className={`text-sm ${
+                trend.isPositive ? "text-green-400" : "text-red-400"
+              }`}
+            >
+              {trend.isPositive ? "+" : ""}
+              {trend.value}%
+            </span>
+            <span className="text-gray-500 text-sm ml-1">vs last upload</span>
+          </div>
+        )}
+      </div>
+      <div className={`p-3 bg-${color}-600/20 rounded-xl`}>
+        <Icon className={`text-${color}-400 text-xl`} />
+      </div>
+    </div>
+  </motion.div>
+);
+
 const DataUploadPage = () => {
-  // Existing States
+  // States
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -38,47 +125,70 @@ const DataUploadPage = () => {
   const [predictionMethod, setPredictionMethod] = useState<
     "transformer" | "math"
   >("transformer");
-
   const [selectedModel, setSelectedModel] =
-    useState<string>("Predictive Model"); // Updated State
-
-  const [taskId, setTaskId] = useState<string | null>(null);
+    useState<string>("Predictive Model");
   const [calculationStatus, setCalculationStatus] = useState<string | null>(
     null
   );
+  // calculationStatus is used in checkCalculationStatus function for status tracking
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [pollingIntervalId, setPollingIntervalId] =
     useState<NodeJS.Timeout | null>(null);
-
-  const [smilesData, setSmilesData] = useState<SMILESDatum[]>([]); // State to hold parsed CSV data
+  const [smilesData, setSmilesData] = useState<SMILESDatum[]>([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [fileInfo, setFileInfo] = useState<{
+    name: string;
+    size: number;
+  } | null>(null);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
 
   const router = useRouter();
   const searchParams = useSearchParams();
-
-  // Reference to the "Train" button
   const trainButtonRef = useRef<HTMLButtonElement>(null);
-
-  // Tour States
-  const [isTourOpen, setIsTourOpen] = useState(false); // State to control tour visibility
-
-  // For demonstration, using local darkMode state
-  const [darkMode, setDarkMode] = useState(false); // Add your logic to manage darkMode
+  const [isTourOpen, setIsTourOpen] = useState(false);
 
   // Handle file selection from UploadData component
   const handleFileSelected = (file: File) => {
-    // Parse CSV file using Papa Parse
+    console.log("File selected:", file.name); // Debug log
+    setFileInfo({ name: file.name, size: file.size });
+    setUploadProgress(0);
+    setError(null);
+    setSuccessMessage(null);
+    setIsDataLoaded(false);
+
+    // Simulate upload progress
+    const progressInterval = setInterval(() => {
+      setUploadProgress((prev) => {
+        if (prev >= 90) {
+          clearInterval(progressInterval);
+          return 90;
+        }
+        return prev + 10;
+      });
+    }, 100);
+
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
       complete: function (results) {
+        console.log("Parsed data:", results.data); // Debug log
         const parsedData = results.data as SMILESDatum[];
         setSmilesData(parsedData);
-        setSuccessMessage("File parsed successfully!");
+        setSuccessMessage(
+          `File parsed successfully! Loaded ${parsedData.length} records.`
+        );
         setError(null);
+        setUploadProgress(100);
+        setIsDataLoaded(true);
+        setTimeout(() => setUploadProgress(0), 2000);
       },
-      error: function (err) {
-        setError("Failed to parse CSV file.");
+      error: function () {
+        setError(
+          "Failed to parse CSV file. Please ensure the file is in the correct format."
+        );
         setSuccessMessage(null);
+        setUploadProgress(0);
+        setIsDataLoaded(false);
       },
     });
   };
@@ -106,7 +216,6 @@ const DataUploadPage = () => {
           if (predictionMethod === "transformer") {
             apiUrl = PREDICT_API_URL;
           } else {
-            // For Math-Based Approach
             apiUrl = MATH_PREDICT_API_URL;
           }
         } else if (selectedModel === "Generative Model") {
@@ -123,23 +232,18 @@ const DataUploadPage = () => {
 
       if (response.ok) {
         if (selectedModel === "Generative Model") {
-          // Handle Generative Model Response
           setSuccessMessage("Generation started successfully!");
-          // Implement any additional handling, such as storing generated data or providing download links
-          // Example: If backend returns a URL to generated content
           if (data.generated_url) {
             setDownloadUrl(`http://localhost:5000${data.generated_url}`);
           }
         } else if (predictionMethod === "math") {
-          // Store the task_id and start polling
           const { task_id } = data;
-          setTaskId(task_id);
+          setCalculationStatus("Calculation started successfully!");
           setSuccessMessage("Calculation started successfully!");
 
-          // Start polling the status endpoint
           const intervalId = setInterval(() => {
             checkCalculationStatus(task_id);
-          }, 5000); // Poll every 5 seconds
+          }, 5000);
 
           setPollingIntervalId(intervalId);
         } else {
@@ -148,7 +252,6 @@ const DataUploadPage = () => {
               ? "Predictions started successfully!"
               : "Model training started successfully!"
           );
-          // Optionally, redirect based on action
           setTimeout(() => {
             router.push(
               isPredictMode
@@ -160,7 +263,7 @@ const DataUploadPage = () => {
       } else {
         setError(data.error || "An error occurred during the operation.");
       }
-    } catch (err: any) {
+    } catch {
       setError("Failed to connect to the server.");
     } finally {
       setLoading(false);
@@ -181,7 +284,6 @@ const DataUploadPage = () => {
           setSuccessMessage("Calculation completed successfully!");
           setDownloadUrl(`http://localhost:5000${data.download_url}`);
 
-          // Stop polling
           if (pollingIntervalId) {
             clearInterval(pollingIntervalId);
             setPollingIntervalId(null);
@@ -190,26 +292,22 @@ const DataUploadPage = () => {
           setError(
             data.error_detail || "An error occurred during calculation."
           );
-          // Stop polling
           if (pollingIntervalId) {
             clearInterval(pollingIntervalId);
             setPollingIntervalId(null);
           }
         } else {
-          // Update progress message if available
           setSuccessMessage(data.message);
         }
       } else {
         setError(data.error || "Failed to get calculation status.");
-        // Stop polling
         if (pollingIntervalId) {
           clearInterval(pollingIntervalId);
           setPollingIntervalId(null);
         }
       }
-    } catch (err) {
+    } catch {
       setError("Failed to connect to the server.");
-      // Stop polling
       if (pollingIntervalId) {
         clearInterval(pollingIntervalId);
         setPollingIntervalId(null);
@@ -217,7 +315,6 @@ const DataUploadPage = () => {
     }
   };
 
-  // Clear polling interval on component unmount
   useEffect(() => {
     return () => {
       if (pollingIntervalId) {
@@ -226,24 +323,18 @@ const DataUploadPage = () => {
     };
   }, [pollingIntervalId]);
 
-  // Optional: Automatically start the tour for first-time users
   useEffect(() => {
     const hasCompletedTour = localStorage.getItem("hasCompletedTour");
-
     if (!hasCompletedTour) {
       setIsTourOpen(true);
       localStorage.setItem("hasCompletedTour", "true");
     }
   }, []);
 
-  // Handle automatic triggering of the "Train" button based on query parameter
   useEffect(() => {
     const autoToggle = searchParams.get("autoToggle");
-
     if (autoToggle === "true" && trainButtonRef.current) {
       trainButtonRef.current.click();
-
-      // Remove the query parameter to prevent re-triggering on refresh
       router.replace("/pages/data-upload");
     }
   }, [searchParams, router]);
@@ -254,116 +345,233 @@ const DataUploadPage = () => {
       <Sidebar />
 
       {/* Main Content */}
-      <div className="flex-1 ">
+      <div className="flex-1 flex flex-col lg:ml-64">
         {/* Header */}
         <Header />
-        <div className="p-6">
-          {/* Page Title */}
-          <h1 className="text-3xl font-extrabold mb-6">Data Upload</h1>
 
-          {/* Dropdown Menu for Model Type Selection */}
-          <div className="mb-6">
-            <StaggeredDropDown
-              selectedModel={selectedModel}
-              setSelectedModel={setSelectedModel}
+        {/* Page Content */}
+        <div className="flex-1 p-4 md:p-6 lg:p-8">
+          {/* Page Header */}
+          <div className="mb-8">
+            <div className="flex items-center mb-4">
+              <div className="p-3 bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg mr-4">
+                <FaUpload className="text-white text-xl" />
+              </div>
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold text-white">
+                  Data Upload & Processing
+                </h1>
+                <p className="text-gray-400 mt-1">
+                  Upload your molecular data and choose your processing method
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats Overview */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <StatsCard
+              title="Total Records"
+              value={smilesData.length > 0 ? smilesData.length : "0"}
+              icon={FaDatabase}
+              color="blue"
+              trend={isDataLoaded ? { value: 15, isPositive: true } : null}
+            />
+            <StatsCard
+              title="Processing Time"
+              value="2.3s"
+              icon={FaRocket}
+              color="green"
+              trend={{ value: 8, isPositive: false }}
+            />
+            <StatsCard
+              title="Success Rate"
+              value="98.5%"
+              icon={FaCheckCircle}
+              color="purple"
+              trend={{ value: 2.1, isPositive: true }}
+            />
+            <StatsCard
+              title="Active Models"
+              value="3"
+              icon={FaBrain}
+              color="orange"
             />
           </div>
 
-          {/* Toggle Switch */}
-          <div className="flex items-center mb-8">
-            <span className="mr-4 text-lg font-medium">
-              {isPredictMode ? "Predict Mode" : "Train Mode"}
-            </span>
-            <Switch
-              checked={isPredictMode}
-              onChange={setIsPredictMode}
-              className={`${
-                isPredictMode ? "bg-blue-600" : "bg-gray-300"
-              } relative inline-flex h-8 w-16 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500`}
-            >
-              <span
-                className={`${
-                  isPredictMode ? "translate-x-8" : "translate-x-0"
-                } inline-block h-6 w-6 transform rounded-full bg-white shadow-md transition-transform`}
-              />
-            </Switch>
-          </div>
-
-          {/* Prediction Method Selection (Only in Predict Mode and Predictive Model) */}
-          {isPredictMode && selectedModel === "Predictive Model" && (
-            <div className="mb-8">
-              <h2 className="text-xl font-semibold mb-4">
-                Select Prediction Method:
-              </h2>
-              <div className="flex flex-col md:flex-row items-center md:items-stretch md:justify-start gap-4">
-                {/* Transformer Model Card */}
-                <div
-                  onClick={() => setPredictionMethod("transformer")}
-                  className={`flex flex-col items-center p-6 rounded-lg cursor-pointer shadow-md transition transform hover:scale-105 ${
-                    predictionMethod === "transformer"
-                      ? "bg-blue-600 text-white"
-                      : "bg-[#202020] text-gray-300"
-                  }`}
-                >
-                  <FaBrain className="text-4xl mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">
-                    Transformer Model
-                  </h3>
-                  <p className="text-sm text-center">
-                    Utilize advanced machine learning algorithms for prediction.
-                  </p>
-                </div>
-
-                {/* Math-Based Approach Card */}
-                <div
-                  onClick={() => setPredictionMethod("math")}
-                  className={`flex flex-col items-center p-6 rounded-lg cursor-pointer shadow-md transition transform hover:scale-105 ${
-                    predictionMethod === "math"
-                      ? "bg-blue-600 text-white"
-                      : "bg-[#202020] text-gray-300"
-                  }`}
-                >
-                  <FaCalculator className="text-4xl mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">
-                    Math-Based Approach
-                  </h3>
-                  <p className="text-sm text-center">
-                    Calculate properties using mathematical formulas and
-                    descriptors.
-                  </p>
-                </div>
+          {/* Model Selection */}
+          <ProfessionalCard
+            title="Model Configuration"
+            icon={FaCogs}
+            className="mb-8"
+          >
+            <div className="space-y-6">
+              {/* Model Type Dropdown */}
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Select Model Type
+                </label>
+                <StaggeredDropDown
+                  selectedModel={selectedModel}
+                  setSelectedModel={setSelectedModel}
+                />
               </div>
+
+              {/* Mode Toggle */}
+              <div className="flex items-center justify-between p-4 bg-zinc-800/50 rounded-xl">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">
+                    {isPredictMode ? "Predict Mode" : "Train Mode"}
+                  </h3>
+                  <p className="text-gray-400 text-sm">
+                    {isPredictMode
+                      ? "Use trained models to make predictions"
+                      : "Train new models with your data"}
+                  </p>
+                </div>
+                <Switch
+                  checked={isPredictMode}
+                  onChange={setIsPredictMode}
+                  className={`${
+                    isPredictMode ? "bg-blue-600" : "bg-gray-600"
+                  } relative inline-flex h-8 w-16 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                >
+                  <span
+                    className={`${
+                      isPredictMode ? "translate-x-8" : "translate-x-0"
+                    } inline-block h-6 w-6 transform rounded-full bg-white shadow-md transition-transform`}
+                  />
+                </Switch>
+              </div>
+
+              {/* Prediction Method Selection */}
+              {isPredictMode && selectedModel === "Predictive Model" && (
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-4">
+                    Select Prediction Method
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <motion.div
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setPredictionMethod("transformer")}
+                      className={`p-6 rounded-xl cursor-pointer transition-all duration-200 ${
+                        predictionMethod === "transformer"
+                          ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white border-2 border-blue-500"
+                          : "bg-zinc-800/50 text-gray-300 border-2 border-transparent hover:border-blue-500/50"
+                      }`}
+                    >
+                      <div className="flex items-center mb-3">
+                        <FaBrain className="text-2xl mr-3" />
+                        <h4 className="text-lg font-semibold">
+                          Transformer Model
+                        </h4>
+                      </div>
+                      <p className="text-sm opacity-90">
+                        Advanced AI-powered predictions using transformer
+                        architecture
+                      </p>
+                    </motion.div>
+
+                    <motion.div
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setPredictionMethod("math")}
+                      className={`p-6 rounded-xl cursor-pointer transition-all duration-200 ${
+                        predictionMethod === "math"
+                          ? "bg-gradient-to-r from-green-600 to-green-700 text-white border-2 border-green-500"
+                          : "bg-zinc-800/50 text-gray-300 border-2 border-transparent hover:border-green-500/50"
+                      }`}
+                    >
+                      <div className="flex items-center mb-3">
+                        <FaCalculator className="text-2xl mr-3" />
+                        <h4 className="text-lg font-semibold">
+                          Math-Based Approach
+                        </h4>
+                      </div>
+                      <p className="text-sm opacity-90">
+                        Calculate properties using mathematical formulas and
+                        descriptors
+                      </p>
+                    </motion.div>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </ProfessionalCard>
 
-          {/* Components Container */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Storage Component */}
-            <StorageComponent />
-
+          {/* Upload and Storage Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
             {/* Upload Component */}
-            <div className="bg-[#202020] p-8 rounded-xl shadow-2xl flex flex-col justify-center items-center">
-              <UploadData onFileSelected={handleFileSelected} />
-              <div className="text-gray-300 mt-6 flex flex-col items-center w-full">
-                <button
+            <ProfessionalCard
+              title="Data Upload"
+              icon={FaUpload}
+              gradient="from-green-600 to-green-700"
+            >
+              <div className="space-y-6">
+                <UploadData onFileSelected={handleFileSelected} />
+
+                {/* File Info Display */}
+                {fileInfo && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-zinc-800/50 p-4 rounded-xl"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-white font-medium">
+                          {fileInfo.name}
+                        </p>
+                        <p className="text-gray-400 text-sm">
+                          {(fileInfo.size / 1024).toFixed(2)} KB
+                        </p>
+                      </div>
+                      <FaCheckCircle className="text-green-400 text-xl" />
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Upload Progress */}
+                {uploadProgress > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Processing...</span>
+                      <span className="text-white">{uploadProgress}%</span>
+                    </div>
+                    <div className="w-full bg-zinc-700 rounded-full h-2">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${uploadProgress}%` }}
+                        className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-300"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Button */}
+                <motion.button
                   ref={trainButtonRef}
                   onClick={handleStartAction}
-                  disabled={loading}
-                  className={`flex items-center justify-center w-full bg-gradient-to-r from-blue-500 to-blue-700 text-white py-3 px-6 rounded-lg mt-4 shadow-lg hover:from-blue-600 hover:to-blue-800 transition-all duration-300 disabled:opacity-50`}
-                  aria-label={
-                    isPredictMode ? "Start Prediction" : "Start Training"
-                  }
+                  disabled={loading || !isDataLoaded}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className={`w-full flex items-center justify-center py-4 px-6 rounded-xl font-semibold text-white transition-all duration-300 ${
+                    loading || !isDataLoaded
+                      ? "bg-gray-600 cursor-not-allowed"
+                      : "bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-lg"
+                  }`}
                 >
                   {loading ? (
                     <>
-                      <div className="animate-spin h-5 w-5 mr-3 border-2 border-white border-t-transparent rounded-full"></div>
+                      <div className="animate-spin h-5 w-5 mr-3 border-2 border-white border-t-transparent rounded-full" />
                       {isPredictMode ? "Processing..." : "Training..."}
                     </>
                   ) : (
                     <>
                       {isPredictMode ? (
                         selectedModel === "Generative Model" ? (
-                          <FaCogs className="mr-2" /> // Icon for Generative Model
+                          <FaCogs className="mr-2" />
                         ) : predictionMethod === "transformer" ? (
                           <FaBrain className="mr-2" />
                         ) : (
@@ -379,74 +587,117 @@ const DataUploadPage = () => {
                         : "Start Training"}
                     </>
                   )}
-                </button>
-                {error && <p className="text-red-500 mt-3">{error}</p>}
-                {successMessage && (
-                  <p className="text-green-500 mt-3">{successMessage}</p>
-                )}
+                </motion.button>
+
+                {/* Status Messages */}
+                <AnimatePresence>
+                  {error && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="flex items-center p-3 bg-red-500/20 border border-red-500/30 rounded-lg"
+                    >
+                      <FaExclamationTriangle className="text-red-400 mr-2" />
+                      <span className="text-red-400 text-sm">{error}</span>
+                    </motion.div>
+                  )}
+                  {successMessage && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="flex items-center p-3 bg-green-500/20 border border-green-500/30 rounded-lg"
+                    >
+                      <FaCheckCircle className="text-green-400 mr-2" />
+                      <span className="text-green-400 text-sm">
+                        {successMessage}
+                      </span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {/* Download Link */}
                 {downloadUrl && (
-                  <div className="mt-4">
-                    <a
-                      href={downloadUrl}
-                      download
-                      className="text-blue-500 underline"
-                    >
-                      Download Results
-                    </a>
-                  </div>
+                  <motion.a
+                    href={downloadUrl}
+                    download
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex items-center justify-center w-full py-3 px-6 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold rounded-xl transition-all duration-300"
+                  >
+                    <FaUpload className="mr-2" />
+                    Download Results
+                  </motion.a>
                 )}
               </div>
-            </div>
+            </ProfessionalCard>
+
+            {/* Storage Component */}
+            <ProfessionalCard
+              title="Storage & Management"
+              icon={FaDatabase}
+              gradient="from-purple-600 to-purple-700"
+            >
+              <StorageComponent />
+            </ProfessionalCard>
           </div>
 
-          {/* Display SMILES Data Table */}
-          {smilesData.length > 0 && <SmilesDataTable data={smilesData} />}
-
-          {/* Loading Modal */}
-          {loading && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-              <div className="bg-white p-6 rounded-lg flex items-center shadow-xl">
-                <svg
-                  className="animate-spin h-10 w-10 text-blue-600"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8v8H4z"
-                  ></path>
-                </svg>
-                <p className="ml-4 text-lg text-gray-700">
-                  {isPredictMode
-                    ? selectedModel === "Generative Model"
-                      ? "Generating... Please wait."
-                      : "Processing... Please wait."
-                    : "Training... Please wait."}
-                </p>
-              </div>
-            </div>
+          {/* Data Preview */}
+          {smilesData.length > 0 && (
+            <ProfessionalCard
+              title="Data Preview"
+              icon={FaFileCsv}
+              gradient="from-orange-600 to-orange-700"
+            >
+              <SmilesDataTable data={smilesData} />
+            </ProfessionalCard>
           )}
         </div>
-
-        {/* CustomTour Component */}
-        <CustomTour
-          steps={tutorialSteps}
-          isOpen={isTourOpen}
-          onClose={() => setIsTourOpen(false)}
-          darkMode={darkMode} // Pass the darkMode state or prop
-        />
       </div>
+
+      {/* Loading Modal */}
+      <AnimatePresence>
+        {loading && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex justify-center items-center z-50"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-gradient-to-br from-zinc-900 to-zinc-800 p-8 rounded-2xl shadow-2xl border border-zinc-700"
+            >
+              <div className="flex items-center space-x-4">
+                <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full" />
+                <div>
+                  <p className="text-white font-semibold text-lg">
+                    {isPredictMode
+                      ? selectedModel === "Generative Model"
+                        ? "Generating..."
+                        : "Processing..."
+                      : "Training..."}
+                  </p>
+                  <p className="text-gray-400 text-sm">
+                    Please wait while we process your data
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* CustomTour Component */}
+      <CustomTour
+        steps={tutorialSteps}
+        isOpen={isTourOpen}
+        onClose={() => setIsTourOpen(false)}
+        darkMode={false}
+      />
     </div>
   );
 };
