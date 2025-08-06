@@ -12,7 +12,7 @@ const ModelPredictingPage = () => {
       <Sidebar />
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col lg:ml-64">
         <Header />
         <div className="flex items-center justify-center flex-1 p-4">
           <ModelTrainingLoader />
