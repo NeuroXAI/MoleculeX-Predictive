@@ -42,7 +42,7 @@ const BiologicalActivityPage = () => {
       <Sidebar />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col lg:ml-64">
         {/* Header */}
         <Header />
 
