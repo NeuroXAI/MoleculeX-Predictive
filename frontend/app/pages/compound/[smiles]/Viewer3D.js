@@ -118,15 +118,29 @@ export default function Viewer3D({ sdf, viewerRef, onError }) {
                 }
 
                 const script = document.createElement("script");
+                // Try multiple CDNs for better reliability
                 script.src = "https://3dmol.csb.pitt.edu/build/3Dmol-min.js";
                 script.async = true;
                 script.onload = () => {
-                    console.log("3Dmol.js loaded successfully");
+                    console.log("3Dmol.js loaded successfully from primary CDN");
                     resolve();
                 };
                 script.onerror = () => {
-                    console.error("Failed to load 3Dmol.js");
-                    reject(new Error("Failed to load 3Dmol.js"));
+                    console.warn("Failed to load 3Dmol.js from primary CDN, trying alternative...");
+                    
+                    // Try alternative CDN
+                    const altScript = document.createElement("script");
+                    altScript.src = "https://cdn.jsdelivr.net/npm/3dmol@1.8.0/build/3Dmol-min.js";
+                    altScript.async = true;
+                    altScript.onload = () => {
+                        console.log("3Dmol.js loaded successfully from alternative CDN");
+                        resolve();
+                    };
+                    altScript.onerror = () => {
+                        console.error("Failed to load 3Dmol.js from all sources");
+                        reject(new Error("Failed to load 3Dmol.js"));
+                    };
+                    document.head.appendChild(altScript);
                 };
                 document.head.appendChild(script);
             });
