@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { FaExpand, FaCompress, FaRedo, FaDownload, FaExclamationTriangle } from "react-icons/fa";
 
-export default function Simple3DViewer({ sdf, viewerRef }) {
+export default function Simple3DViewer({ sdf, viewerRef, onError }) {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [scene, setScene] = useState(null);
     const [renderer, setRenderer] = useState(null);
@@ -27,14 +27,21 @@ export default function Simple3DViewer({ sdf, viewerRef }) {
                 setError(null);
                 setIsLoading(true);
 
+                console.log("Initializing Simple3DViewer with SDF data length:", sdf.length);
+
                 // Load Three.js if not already loaded
                 if (!window.THREE) {
+                    console.log("Loading Three.js script...");
                     await loadThreeJSScript();
+                } else {
+                    console.log("Three.js already loaded");
                 }
 
                 if (!viewerRef.current) {
                     throw new Error("Viewer container not found");
                 }
+
+                console.log("Creating Three.js scene...");
 
                 // Clear any existing scene
                 if (scene) {
@@ -65,10 +72,17 @@ export default function Simple3DViewer({ sdf, viewerRef }) {
                 viewerRef.current.innerHTML = '';
                 viewerRef.current.appendChild(newRenderer.domElement);
 
-                // Parse SDF and create simple molecular representation
-                const atoms = parseSDF(sdf);
+                console.log("Three.js scene created, parsing SDF...");
 
-                // Create atom spheres
+                // Parse SDF and create molecular representation
+                const atoms = parseSDF(sdf);
+                console.log("Parsed atoms:", atoms.length);
+
+                if (atoms.length === 0) {
+                    throw new Error("No valid atoms found in SDF data");
+                }
+
+                // Create atom spheres with proper positioning
                 atoms.forEach((atom, index) => {
                     const geometry = new window.THREE.SphereGeometry(0.3, 16, 16);
                     const material = new window.THREE.MeshPhongMaterial({
@@ -77,15 +91,62 @@ export default function Simple3DViewer({ sdf, viewerRef }) {
                     });
                     const sphere = new window.THREE.Mesh(geometry, material);
 
-                    // Position atoms in a simple layout
-                    const angle = (index / atoms.length) * Math.PI * 2;
-                    const radius = 2;
-                    sphere.position.x = Math.cos(angle) * radius;
-                    sphere.position.y = Math.sin(angle) * radius;
-                    sphere.position.z = 0;
+                    // Use actual coordinates from SDF if available, otherwise create a layout
+                    if (atom.x !== undefined && atom.y !== undefined && atom.z !== undefined) {
+                        sphere.position.set(atom.x, atom.y, atom.z);
+                    } else {
+                        // Create a circular layout as fallback
+                        const angle = (index / atoms.length) * Math.PI * 2;
+                        const radius = 2;
+                        sphere.position.x = Math.cos(angle) * radius;
+                        sphere.position.y = Math.sin(angle) * radius;
+                        sphere.position.z = 0;
+                    }
 
                     newScene.add(sphere);
                 });
+
+                console.log("Atoms added to scene");
+
+                // Add bonds if available
+                const bonds = parseBonds(sdf);
+                console.log("Parsed bonds:", bonds.length);
+                bonds.forEach(bond => {
+                    if (bond.startAtom < atoms.length && bond.endAtom < atoms.length) {
+                        const startAtom = atoms[bond.startAtom];
+                        const endAtom = atoms[bond.endAtom];
+
+                        const startPos = new window.THREE.Vector3(
+                            startAtom.x || 0,
+                            startAtom.y || 0,
+                            startAtom.z || 0
+                        );
+                        const endPos = new window.THREE.Vector3(
+                            endAtom.x || 0,
+                            endAtom.y || 0,
+                            endAtom.z || 0
+                        );
+
+                        const bondGeometry = new window.THREE.CylinderGeometry(0.05, 0.05, 1, 8);
+                        const bondMaterial = new window.THREE.MeshPhongMaterial({ color: 0xcccccc });
+                        const bondMesh = new window.THREE.Mesh(bondGeometry, bondMaterial);
+
+                        // Position and orient the bond
+                        const midPoint = startPos.clone().add(endPos).multiplyScalar(0.5);
+                        bondMesh.position.copy(midPoint);
+
+                        const direction = endPos.clone().sub(startPos);
+                        const length = direction.length();
+                        bondMesh.scale.set(1, length, 1);
+
+                        bondMesh.lookAt(endPos);
+                        bondMesh.rotateX(Math.PI / 2);
+
+                        newScene.add(bondMesh);
+                    }
+                });
+
+                console.log("Bonds added to scene");
 
                 // Add lighting
                 const ambientLight = new window.THREE.AmbientLight(0x404040, 0.6);
@@ -94,6 +155,13 @@ export default function Simple3DViewer({ sdf, viewerRef }) {
                 const directionalLight = new window.THREE.DirectionalLight(0xffffff, 0.8);
                 directionalLight.position.set(1, 1, 1);
                 newScene.add(directionalLight);
+
+                // Add point light for better atom visibility
+                const pointLight = new window.THREE.PointLight(0xffffff, 0.5, 10);
+                pointLight.position.set(0, 0, 5);
+                newScene.add(pointLight);
+
+                console.log("Lighting added to scene");
 
                 // Animation loop
                 const animate = () => {
@@ -106,11 +174,15 @@ export default function Simple3DViewer({ sdf, viewerRef }) {
                 setRenderer(newRenderer);
                 setCamera(newCamera);
                 setIsLoading(false);
+                console.log("Simple3DViewer initialized successfully");
 
             } catch (error) {
                 console.error("Error initializing Simple3DViewer:", error);
                 setError("Failed to load 3D structure with simple viewer");
                 setIsLoading(false);
+                if (onError) {
+                    onError();
+                }
             }
         };
 
@@ -122,15 +194,29 @@ export default function Simple3DViewer({ sdf, viewerRef }) {
                 }
 
                 const script = document.createElement("script");
+                // Try multiple CDNs for better reliability
                 script.src = "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
                 script.async = true;
                 script.onload = () => {
-                    console.log("Three.js loaded successfully");
+                    console.log("Three.js loaded successfully from CDN");
                     resolve();
                 };
                 script.onerror = () => {
-                    console.error("Failed to load Three.js");
-                    reject(new Error("Failed to load Three.js"));
+                    console.warn("Failed to load Three.js from CDN, trying alternative...");
+                    
+                    // Try alternative CDN
+                    const altScript = document.createElement("script");
+                    altScript.src = "https://unpkg.com/three@0.128.0/build/three.min.js";
+                    altScript.async = true;
+                    altScript.onload = () => {
+                        console.log("Three.js loaded successfully from alternative CDN");
+                        resolve();
+                    };
+                    altScript.onerror = () => {
+                        console.error("Failed to load Three.js from all sources");
+                        reject(new Error("Failed to load Three.js"));
+                    };
+                    document.head.appendChild(altScript);
                 };
                 document.head.appendChild(script);
             });
@@ -140,20 +226,61 @@ export default function Simple3DViewer({ sdf, viewerRef }) {
             const atoms = [];
             const lines = sdfData.split('\n');
 
-            // Simple SDF parsing - look for atom lines
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i];
-                if (line.trim() && !isNaN(line.substring(0, 10).trim())) {
-                    // This might be an atom line
-                    const parts = line.split(/\s+/);
-                    if (parts.length >= 4) {
-                        const x = parseFloat(parts[0]);
-                        const y = parseFloat(parts[1]);
-                        const z = parseFloat(parts[2]);
-                        const element = parts[3];
+            // Look for the atom count line (usually line 4 in SDF format)
+            let atomCount = 0;
+            let bondCount = 0;
+            let atomStartLine = 0;
 
-                        if (!isNaN(x) && !isNaN(y) && !isNaN(z) && element) {
-                            atoms.push({ x, y, z, element });
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+
+                // Try to find the counts line (format: "atomCount bondCount ...")
+                if (line.match(/^\d+\s+\d+/)) {
+                    const parts = line.split(/\s+/);
+                    if (parts.length >= 2) {
+                        atomCount = parseInt(parts[0]);
+                        bondCount = parseInt(parts[1]);
+                        atomStartLine = i + 1;
+                        break;
+                    }
+                }
+            }
+
+            // If we found the counts, parse atoms from the specified lines
+            if (atomCount > 0 && atomStartLine > 0) {
+                for (let i = 0; i < atomCount; i++) {
+                    const lineIndex = atomStartLine + i;
+                    if (lineIndex < lines.length) {
+                        const line = lines[lineIndex];
+                        const parts = line.split(/\s+/);
+
+                        if (parts.length >= 4) {
+                            const x = parseFloat(parts[0]);
+                            const y = parseFloat(parts[1]);
+                            const z = parseFloat(parts[2]);
+                            const element = parts[3];
+
+                            if (!isNaN(x) && !isNaN(y) && !isNaN(z) && element) {
+                                atoms.push({ x, y, z, element });
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Fallback: look for atom lines in the entire file
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+                    if (line.trim() && !isNaN(line.substring(0, 10).trim())) {
+                        const parts = line.split(/\s+/);
+                        if (parts.length >= 4) {
+                            const x = parseFloat(parts[0]);
+                            const y = parseFloat(parts[1]);
+                            const z = parseFloat(parts[2]);
+                            const element = parts[3];
+
+                            if (!isNaN(x) && !isNaN(y) && !isNaN(z) && element) {
+                                atoms.push({ x, y, z, element });
+                            }
                         }
                     }
                 }
@@ -165,6 +292,50 @@ export default function Simple3DViewer({ sdf, viewerRef }) {
             }
 
             return atoms;
+        };
+
+        const parseBonds = (sdfData) => {
+            const bonds = [];
+            const lines = sdfData.split('\n');
+
+            // Look for bond lines after atom lines
+            let inBondSection = false;
+            let atomCount = 0;
+
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+
+                // Find the counts line
+                if (line.match(/^\d+\s+\d+/)) {
+                    const parts = line.split(/\s+/);
+                    if (parts.length >= 2) {
+                        atomCount = parseInt(parts[0]);
+                        inBondSection = true;
+                        continue;
+                    }
+                }
+
+                // Parse bond lines
+                if (inBondSection && line.match(/^\d+\s+\d+\s+\d+/)) {
+                    const parts = line.split(/\s+/);
+                    if (parts.length >= 3) {
+                        const startAtom = parseInt(parts[0]) - 1; // SDF uses 1-based indexing
+                        const endAtom = parseInt(parts[1]) - 1;
+                        const bondType = parseInt(parts[2]);
+
+                        if (!isNaN(startAtom) && !isNaN(endAtom) && !isNaN(bondType)) {
+                            bonds.push({ startAtom, endAtom, type: bondType });
+                        }
+                    }
+                }
+
+                // Stop when we hit the end of bonds section
+                if (inBondSection && line === '') {
+                    break;
+                }
+            }
+
+            return bonds;
         };
 
         const getAtomColor = (element) => {
