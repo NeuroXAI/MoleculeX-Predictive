@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { FaExpand, FaCompress, FaRedo, FaDownload, FaExclamationTriangle } from "react-icons/fa";
 
-export default function Alternative3DViewer({ sdf, viewerRef }) {
+export default function Alternative3DViewer({ sdf, viewerRef, onError }) {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [viewer, setViewer] = useState(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -25,14 +25,21 @@ export default function Alternative3DViewer({ sdf, viewerRef }) {
                 setError(null);
                 setIsLoading(true);
 
+                console.log("Initializing Alternative3DViewer with SDF data length:", sdf.length);
+
                 // Load NGL Viewer if not already loaded
                 if (!window.NGL) {
+                    console.log("Loading NGL script...");
                     await loadNGLScript();
+                } else {
+                    console.log("NGL already loaded");
                 }
 
                 if (!viewerRef.current) {
                     throw new Error("Viewer container not found");
                 }
+
+                console.log("Creating NGL Stage...");
 
                 // Clear any existing viewer
                 if (viewer) {
@@ -50,40 +57,55 @@ export default function Alternative3DViewer({ sdf, viewerRef }) {
                     antialias: true
                 });
 
+                console.log("NGL Stage created successfully");
+
                 // Add the SDF structure using the correct NGL API
                 try {
                     // Create a blob from the SDF data
                     const blob = new Blob([sdf], { type: "chemical/x-mdl-molfile" });
+                    console.log("Created blob from SDF data");
                     
                     // Load the structure using loadFile method
+                    console.log("Loading structure with NGL...");
                     const structure = await viewerInstance.loadFile(blob, { ext: "sdf" });
+                    console.log("Structure loaded:", structure);
                     
                     // Add ball+stick representation to the loaded structure
                     if (structure && structure.length > 0) {
                         const mol = structure[0];
-                        mol.addRepresentation("ball+stick", {
+                        console.log("Adding representations to molecule...");
+                        
+                        // Use the correct NGL API for adding representations
+                        const repr = mol.addRepresentation("ball+stick", {
                             color: "element",
                             radius: 0.5
                         });
+                        console.log("Ball+stick representation added:", repr);
                         
                         // Add surface representation
-                        mol.addRepresentation("surface", {
+                        const surfaceRepr = mol.addRepresentation("surface", {
                             opacity: 0.3,
                             color: "element"
                         });
+                        console.log("Surface representation added:", surfaceRepr);
+                    } else {
+                        console.warn("No structure components found");
                     }
 
                     viewerInstance.autoView();
                     setViewer(viewerInstance);
                     setIsLoading(false);
+                    console.log("Alternative3DViewer initialized successfully");
 
                 } catch (modelError) {
                     console.warn("Failed to load SDF, trying alternative approach:", modelError);
 
                     // Try with different format
                     try {
+                        console.log("Trying MOL format...");
                         const blob = new Blob([sdf], { type: "chemical/x-mdl-molfile" });
                         const structure = await viewerInstance.loadFile(blob, { ext: "mol" });
+                        console.log("MOL structure loaded:", structure);
                         
                         if (structure && structure.length > 0) {
                             const mol = structure[0];
@@ -101,13 +123,71 @@ export default function Alternative3DViewer({ sdf, viewerRef }) {
                         viewerInstance.autoView();
                         setViewer(viewerInstance);
                         setIsLoading(false);
+                        console.log("Alternative3DViewer initialized with MOL format");
                     } catch (secondError) {
                         console.error("Both SDF and MOL formats failed:", secondError);
                         
                         // Try with direct structure creation
                         try {
+                            console.log("Trying direct structure creation...");
+                            
+                            // Create a new structure object
                             const structure = new window.NGL.Structure();
-                            structure.load(sdf);
+                            
+                            // Parse the SDF data manually
+                            const lines = sdf.split('\n');
+                            let atoms = [];
+                            let bonds = [];
+                            
+                            // Parse atom and bond information
+                            for (let i = 0; i < lines.length; i++) {
+                                const line = lines[i].trim();
+                                if (line.match(/^\d+\s+\d+/)) {
+                                    const parts = line.split(/\s+/);
+                                    if (parts.length >= 2) {
+                                        const atomCount = parseInt(parts[0]);
+                                        const bondCount = parseInt(parts[1]);
+                                        
+                                        // Parse atoms
+                                        for (let j = 0; j < atomCount; j++) {
+                                            const atomLine = lines[i + 1 + j];
+                                            const atomParts = atomLine.split(/\s+/);
+                                            if (atomParts.length >= 4) {
+                                                atoms.push({
+                                                    x: parseFloat(atomParts[0]),
+                                                    y: parseFloat(atomParts[1]),
+                                                    z: parseFloat(atomParts[2]),
+                                                    element: atomParts[3]
+                                                });
+                                            }
+                                        }
+                                        
+                                        // Parse bonds
+                                        for (let j = 0; j < bondCount; j++) {
+                                            const bondLine = lines[i + 1 + atomCount + j];
+                                            const bondParts = bondLine.split(/\s+/);
+                                            if (bondParts.length >= 3) {
+                                                bonds.push({
+                                                    startAtom: parseInt(bondParts[0]) - 1,
+                                                    endAtom: parseInt(bondParts[1]) - 1,
+                                                    type: parseInt(bondParts[2])
+                                                });
+                                            }
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                            
+                            // Add atoms to structure
+                            atoms.forEach((atom, index) => {
+                                structure.addAtom(atom.element, atom.x, atom.y, atom.z);
+                            });
+                            
+                            // Add bonds to structure
+                            bonds.forEach(bond => {
+                                structure.addBond(bond.startAtom, bond.endAtom, bond.type);
+                            });
                             
                             const component = viewerInstance.addComponentFromObject(structure);
                             component.addRepresentation("ball+stick", {
@@ -118,6 +198,7 @@ export default function Alternative3DViewer({ sdf, viewerRef }) {
                             viewerInstance.autoView();
                             setViewer(viewerInstance);
                             setIsLoading(false);
+                            console.log("Alternative3DViewer initialized with direct structure");
                         } catch (thirdError) {
                             console.error("All loading methods failed:", thirdError);
                             throw new Error("Failed to load molecular structure");
@@ -129,6 +210,9 @@ export default function Alternative3DViewer({ sdf, viewerRef }) {
                 console.error("Error initializing Alternative3DViewer:", error);
                 setError("Failed to load 3D structure with alternative viewer");
                 setIsLoading(false);
+                if (onError) {
+                    onError();
+                }
             }
         };
 
@@ -140,15 +224,29 @@ export default function Alternative3DViewer({ sdf, viewerRef }) {
                 }
 
                 const script = document.createElement("script");
-                script.src = "https://unpkg.com/ngl@0.10.4/dist/ngl.js";
+                // Try multiple CDNs for better reliability
+                script.src = "https://cdn.jsdelivr.net/npm/ngl@0.10.4/dist/ngl.js";
                 script.async = true;
                 script.onload = () => {
-                    console.log("NGL Viewer loaded successfully");
+                    console.log("NGL Viewer loaded successfully from CDN");
                     resolve();
                 };
                 script.onerror = () => {
-                    console.error("Failed to load NGL Viewer");
-                    reject(new Error("Failed to load NGL Viewer"));
+                    console.warn("Failed to load NGL from CDN, trying alternative...");
+                    
+                    // Try alternative CDN
+                    const altScript = document.createElement("script");
+                    altScript.src = "https://unpkg.com/ngl@0.10.4/dist/ngl.js";
+                    altScript.async = true;
+                    altScript.onload = () => {
+                        console.log("NGL Viewer loaded successfully from alternative CDN");
+                        resolve();
+                    };
+                    altScript.onerror = () => {
+                        console.error("Failed to load NGL Viewer from all sources");
+                        reject(new Error("Failed to load NGL Viewer"));
+                    };
+                    document.head.appendChild(altScript);
                 };
                 document.head.appendChild(script);
             });
