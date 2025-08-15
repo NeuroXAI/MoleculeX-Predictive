@@ -27,6 +27,8 @@ const ShapExplanationChart = () => {
   const [errorDetail, setErrorDetail] = useState("");
   const [uploading, setUploading] = useState(false); // Indicates if a file is being uploaded
   const [selectedFile, setSelectedFile] = useState(null); // Stores the selected file
+  const [retryCount, setRetryCount] = useState(0); // Track retry attempts
+  const maxRetries = 10; // Maximum number of retries
 
   const fileInputRef = useRef(null); // Reference to the hidden file input
   const plotRef = useRef(null); // Reference to the Plotly chart
@@ -35,6 +37,52 @@ const ShapExplanationChart = () => {
     try {
       const response = await axios.get("http://127.0.0.1:5000/api/shap_data");
       const data = response.data;
+
+      // Check if the response indicates that SHAP computation is still running
+      if (data.status === "generating") {
+        setStatus("running");
+        setMessage("SHAP explanation is being generated...");
+        setErrorDetail("Please wait while SHAP values are computed.");
+
+        // Poll for completion with retry limit
+        if (retryCount < maxRetries) {
+          setTimeout(() => {
+            setRetryCount((prev) => prev + 1);
+            fetchShapData();
+          }, 3000); // Check again after 3 seconds
+        } else {
+          setStatus("error");
+          setMessage("SHAP computation timed out.");
+          setErrorDetail(
+            "The computation is taking longer than expected. Please try again later."
+          );
+        }
+        return;
+      }
+
+      // Check if response status is 202 (computation started)
+      if (response.status === 202) {
+        setStatus("running");
+        setMessage("SHAP computation started. Processing...");
+        setErrorDetail(
+          "SHAP explanation has been initiated and is running in the background."
+        );
+
+        // Poll for completion with retry limit
+        if (retryCount < maxRetries) {
+          setTimeout(() => {
+            setRetryCount((prev) => prev + 1);
+            fetchShapData();
+          }, 3000); // Check again after 3 seconds
+        } else {
+          setStatus("error");
+          setMessage("SHAP computation timed out.");
+          setErrorDetail(
+            "The computation is taking longer than expected. Please try again later."
+          );
+        }
+        return;
+      }
 
       if (data.error) {
         setStatus("error");
@@ -67,11 +115,64 @@ const ShapExplanationChart = () => {
       setFeatures(filteredFeatures);
       setStatus("completed");
       setMessage("SHAP data loaded successfully.");
-    } catch (error) {
+      setRetryCount(0); // Reset retry count on success
+    } catch (error: any) {
       console.error("Error fetching SHAP data:", error);
+
+      // Handle 409 (Conflict) - SHAP computation already running
+      if (error.response?.status === 409) {
+        setStatus("running");
+        setMessage("SHAP computation is already in progress. Please wait...");
+        setErrorDetail(
+          "Another SHAP computation is currently running. This will complete automatically."
+        );
+
+        // Retry after a delay with retry limit
+        if (retryCount < maxRetries) {
+          setTimeout(() => {
+            setRetryCount((prev) => prev + 1);
+            fetchShapData();
+          }, 5000); // Retry after 5 seconds
+        } else {
+          setStatus("error");
+          setMessage("SHAP computation timed out.");
+          setErrorDetail(
+            "The computation is taking longer than expected. Please try again later."
+          );
+        }
+        return;
+      }
+
+      // Handle 202 (Accepted) - SHAP computation started
+      if (error.response?.status === 202) {
+        setStatus("running");
+        setMessage("SHAP explanation started. Processing...");
+        setErrorDetail(
+          "SHAP computation has been initiated and is running in the background."
+        );
+
+        // Poll for completion with retry limit
+        if (retryCount < maxRetries) {
+          setTimeout(() => {
+            setRetryCount((prev) => prev + 1);
+            fetchShapData();
+          }, 3000); // Check again after 3 seconds
+        } else {
+          setStatus("error");
+          setMessage("SHAP computation timed out.");
+          setErrorDetail(
+            "The computation is taking longer than expected. Please try again later."
+          );
+        }
+        return;
+      }
+
+      // Handle other errors
       setStatus("error");
       setMessage("Failed to fetch SHAP data.");
-      setErrorDetail(error.response?.data?.error || error.message);
+      setErrorDetail(
+        error.response?.data?.error || error.message || "Unknown error occurred"
+      );
     }
   };
 
@@ -104,11 +205,13 @@ const ShapExplanationChart = () => {
         setStatus("error");
         setMessage("Unexpected response from the server.");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error starting SHAP explanation:", error);
       setStatus("error");
       setMessage("Failed to start SHAP explanation.");
-      setErrorDetail(error.response?.data?.error || error.message);
+      setErrorDetail(
+        error.response?.data?.error || error.message || "Unknown error occurred"
+      );
     } finally {
       setUploading(false);
       setSelectedFile(null);
