@@ -1,5 +1,6 @@
 # Using XAI Algorithms for Material Recognition 
 
+
 This project uses the ChemBERTa model for molecular property predictions based on SMILES strings. The model is fine-tuned using a dataset of SMILES strings and associated molecular properties.
 
 The frontend for the **Material Recognition Model** is built using **Next.js**, a React-based framework that supports server-side rendering and optimized performance. This interface allows users to input **SMILES** strings and receive predictions for molecular properties.
