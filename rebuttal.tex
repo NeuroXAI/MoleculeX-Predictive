@@ -1,0 +1,352 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+
+\newcommand{\RC}[1]{\textbf{\textcolor{blue}{Reviewer Comment:}} \textit{#1}\vspace{0.3em}}
+\newcommand{\AR}[1]{\textbf{Author Response:} #1\vspace{0.8em}}
+\newcommand{\CH}[1]{\textbf{\textcolor{teal}{Change Location:}} #1\vspace{0.5em}}
+
+\title{Point-by-Point Response to Reviewers\\[0.5em]
+\large Manuscript ARRAY-D-25-02909\\
+MoleculeX-Predictive: An Augmentation of Transformers with\\Explainable AI and Knowledge Layers for Efficient Drug Property Prediction}
+\author{}
+\date{February 2026}
+
+\begin{document}
+\maketitle
+
+\noindent Dear Editor and Reviewers,
+
+\medskip\noindent We sincerely thank the editor and all five reviewers for their thorough and constructive evaluation of our manuscript. Their insightful comments have substantially improved the scientific rigor, clarity, and completeness of our work. Below we provide a point-by-point response to every comment, with specific references to where each change appears in the revised manuscript. All changes are highlighted in the tracked-changes version.
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Reviewer \#1}
+
+\RC{1.1 -- In Section 5.2, please provide more specific details on the query used to extract the 16,847 compounds from ChEMBL 30.}
+
+\AR{We have added the exact SQL-equivalent query parameters used to extract compounds from ChEMBL 30, including assay type filters (BAO:0000006, BAO:0000015), standard relation (``=''), standard units (nM), standard type (IC50), target organism (Homo sapiens), and confidence score ($\geq 8$).}
+
+\CH{Section 5.2 (Dataset), paragraph 1. The full query specification is now provided inline.}
+
+\bigskip
+
+\RC{1.2 -- The paper explicitly states that the MOSES dataset lacks experimental pIC50 values, so the reported pIC50 predictions are model outputs, which cannot be validated against ground truth. This distinction is important to avoid potential misinterpretation.}
+
+\AR{We have strengthened the MOSES caveat with a boldface ``Important caveat'' statement explicitly noting that all pIC50 predictions on MOSES are model-generated outputs that cannot be validated against ground-truth biological activity and should be interpreted as demonstrating chemical plausibility, not experimental validity. We have also clarified that the model was trained and initially tested on the ChEMBL dataset, which contains ground-truth experimental pIC50 values, so the reported cross-validation metrics ($R^2$, MAE, RMSE) are validated against experimental data; only the MOSES evaluation lacks ground-truth pIC50 for validation.}
+
+\CH{Section 5.2 (Dataset), MOSES paragraph.}
+
+\bigskip
+
+\RC{1.3 -- Baseline Comparison Fairness. In Table 4, the input features for the Random Forest and SVR baselines need clarification. Besides, it would be very informative to add a stronger baseline: a traditional ML model trained on the same feature set as your knowledge-augmented model.}
+
+\AR{Table 4 has been substantially expanded. We now specify the exact input features for every baseline: (i) Morgan circular fingerprints (radius 2, 2048-bit), and (ii) the same five RDKit descriptors used in our knowledge layer (MolWt, NumHDonors, NumHAcceptors, LogP, NumRotatableBonds). Both RF and SVR are reported with both feature sets. Hyperparameter tuning details are also provided.}
+
+\CH{Section 5.4 (Comparison with Baseline Methods), Table 4 and accompanying text.}
+
+\bigskip
+
+\RC{1.4 -- Multi-Task Benefit. Consider adding a comparison against three separate, single-task ChemBERTa models. Does joint training provide a performance boost?}
+
+\AR{We have added a single-task vs.\ multi-task comparison. Three separate single-task ChemBERTa models were trained and compared. Multi-task training improves pIC50 $R^2$ from 0.822 to 0.920 (+11.9\%) and logP $R^2$ from 0.793 to 0.872 (+10.0\%), confirming that joint training provides beneficial regularization and positive transfer between related molecular properties.}
+
+\CH{Section 5.4, Table 4 (rows for single-task models) and new paragraph ``Single-task vs.\ multi-task comparison.''}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Reviewer \#2}
+
+\RC{2.1 -- Novelty Enhancement: Discuss the synergy between the RDKit-derived features and the transformer embeddings. Does the knowledge layer correct specific biases inherent in SMILES-only transformers?}
+
+\AR{We have added a dedicated ``Rationale for knowledge augmentation'' paragraph in the Knowledge Integration Layer subsection. We demonstrate that the Pearson correlation between [CLS] embeddings and RDKit descriptors is $|r| < 0.25$, confirming non-redundant information. The ablation study further shows that removing the knowledge layer degrades pIC50 $R^2$ from 0.920 to 0.831, indicating that RDKit descriptors provide complementary physicochemical information not captured by the transformer alone.}
+
+\CH{Section 3.2 (Knowledge Integration Layer), new paragraphs: ``Rationale for knowledge augmentation,'' ``Potential information overlap,'' and ``Fusion design choice.''}
+
+\bigskip
+
+\RC{2.2 -- Structural Arrangement: Add a ``System Overview'' subsection at the end of the Introduction.}
+
+\AR{A new ``System Overview'' subsection has been added at the end of the Introduction, describing the three-layer architecture: AI engine (knowledge-augmented ChemBERTa + XAI module), Flask backend (REST API, caching, async tasks), and Next.js frontend (interactive visualization and XAI exploration).}
+
+\CH{End of Section 1 (Introduction), new subsection ``System Overview.''}
+
+\bigskip
+
+\RC{2.3 -- Integration of Explanations: Add a ``consistency check'' discussion. Do the three XAI methods agree? If they disagree, how should a chemist interpret the results?}
+
+\AR{We have significantly expanded the XAI consistency analysis. We now report correlation coefficients ($r = 0.68$--$0.73$), agreement rates (76--81\%), and a new paragraph ``Interpreting disagreements'' that provides practical guidance for chemists: consult SHAP for global ranking, LIME for local confirmation, and IG for atom-level localization. Persistent three-way disagreement ($<$5\% of compounds) is flagged for manual review.}
+
+\CH{Section 5.6 (Multi-Modal XAI Consistency Analysis), expanded text after Table 7.}
+
+\bigskip
+
+\RC{2.4 -- Data Updates: Mention how the model handles ``Out-of-Distribution'' (OOD) chemical spaces.}
+
+\AR{We have added a dedicated ``Out-of-distribution (OOD) generalization'' paragraph acknowledging that the training set covers 4,218 scaffolds from kinase and GPCR targets. We explicitly state that performance on structurally distant series (macrocycles, PROTACs, natural products) has not been evaluated and may degrade.}
+
+\CH{Section 5.2 (Dataset), new paragraph ``Out-of-distribution (OOD) generalization.''}
+
+\bigskip
+
+\RC{2.5 -- Related Work \& 2025 Literature Update: Incorporate 2025 studies by Chowdhury et al.\ and Hussain et al.}
+
+\AR{Both studies have been added to the Related Work section with a new subsection ``Cross-Domain XAI in High-Stakes Applications (2025)'' and a comparative table (Table 2) showing how our approach relates to these cross-domain XAI frameworks. The references are also cited in the Future Work discussion regarding unified XAI evaluation standards.}
+
+\CH{Section 2.1, new subsection ``Cross-Domain XAI in High-Stakes Applications (2025)'' with Table 2. Also Section 6 (Conclusion), Future Directions paragraph.}
+
+\bigskip
+
+\RC{2.6 -- Discussion Section: Insert a comparison table with the 2025 studies.}
+
+\AR{Table 2 (Cross-Domain Comparison with 2025 XAI Studies) has been added, comparing domain, architecture, XAI methods, and key similarities across Chowdhury et al.\ (2025), Hussain et al.\ (2025), and our work.}
+
+\CH{Section 2.1, Table 2.}
+
+\bigskip
+
+\RC{2.7 -- Abstract: Replace ``achieve superior predictive performance'' with exact $R^2$ values.}
+
+\AR{We have added the specific numerical results to the abstract: $R^2 = 0.918 \pm 0.012$ for pIC50 (MAE = 0.152), $R^2 = 0.867 \pm 0.015$ for logP, $R^2 = 0.991 \pm 0.003$ for atom count, and the 10.5\% improvement over standard ChemBERTa, while preserving the original structure and flow of the abstract.}
+
+\bigskip
+
+\RC{2.8 -- Methodology (Section 3.2): Clarify the ``Knowledge-based Layers.'' List the 2D/3D descriptors from RDKit that were most influential.}
+
+\AR{The five RDKit descriptors (MolWt, NumHDonors, NumHAcceptors, LogP, NumRotatableBonds) are already listed in Table 1 with their chemical significance. We have further clarified the rationale for their selection and added SHAP-based importance ranking in Section 5.6.}
+
+\CH{Section 3.2 (Knowledge Integration Layer), Table 1, and Section 5.6 (SHAP analysis).}
+
+\bigskip
+
+\RC{2.9 -- Conclusion: Add a sentence on ``Future Work'' regarding unified XAI standards.}
+
+\AR{The Future Directions paragraph now concludes with a statement on the need for unified XAI evaluation standards that enable cross-domain benchmarking, referencing the 2025 medical AI studies.}
+
+\CH{Section 6 (Conclusion), Future Directions paragraph.}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Reviewer \#3}
+
+\RC{3.1 -- Identify the research gap with respect to existing ChemBERTa-XAI studies and provide a comparison table.}
+
+\AR{We have added a new subsection ``Research Gap: ChemBERTa-XAI Integration'' with Table 3 comparing eight capabilities (multi-task prediction, knowledge augmentation, SHAP, LIME, IG, counterfactual, XAI consistency check, pharmacophore validation) across prior studies and our work.}
+
+\CH{Section 2.1, new subsection ``Research Gap: ChemBERTa-XAI Integration'' with Table 3.}
+
+\bigskip
+
+\RC{3.2 -- Rewrite the abstract to emphasize measurable contributions rather than broad qualitative claims.}
+
+\AR{The abstract has been completely rewritten with specific numerical results, improvement percentages, and quantified XAI consistency metrics. All qualitative claims have been replaced with measurable outcomes.}
+
+\CH{Abstract (fully rewritten).}
+
+\bigskip
+
+\RC{3.3 -- Better motivate the design choice of simple concatenation followed by an MLP.}
+
+\AR{A new paragraph ``Fusion design choice'' has been added, explaining three reasons for choosing concatenation+MLP over alternatives: (i) full information preservation, (ii) minimal parameter overhead ($\approx$5k per head) reducing overfitting risk on our 16,847-compound dataset, and (iii) empirically superior validation $R^2$ compared to additive fusion (0.891) and gating (0.905).}
+
+\CH{Section 3.2 (Knowledge Integration Layer), paragraph ``Fusion design choice.''}
+
+\bigskip
+
+\RC{3.4 -- Explicitly discuss potential information overlap between RDKit-derived features and predicted targets.}
+
+\AR{A new paragraph ``Potential information overlap'' acknowledges the overlap (e.g., LogP descriptor vs.\ logP target) and clarifies that the knowledge layer provides input-side properties computable before prediction, not target values. The ablation study confirms that removing the knowledge layer degrades all tasks, indicating these features carry information beyond what the transformer captures alone.}
+
+\CH{Section 3.2 (Knowledge Integration Layer), paragraph ``Potential information overlap.''}
+
+\bigskip
+
+\RC{3.5 -- Clearly define how chemical validation accuracy is measured.}
+
+\AR{A new subsection ``Chemical Validation Protocol'' has been added with a three-step procedure: (1) extract top-3 attributed atoms per XAI method, (2) identify ground-truth pharmacophore atoms using curated SMARTS patterns, (3) score as ``hit'' if any top-3 atom overlaps with a pharmacophore atom. Table 10 reports per-method hit rates (80.5\%--85.5\%) and multi-method results.}
+
+\CH{Section 5.6, new subsection ``Chemical Validation Protocol'' with Table 10.}
+
+\bigskip
+
+\RC{3.6 -- The conclusion should focus on realistic impact and scope, avoiding promotional phrasing.}
+
+\AR{The conclusion has been substantially rewritten. All promotional phrasing has been removed. The text now acknowledges specific limitations (OOD generalization, aggregate descriptor resolution, MOSES ground-truth limitation) and provides realistic future directions.}
+
+\CH{Section 6 (Conclusion), fully revised.}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Reviewer \#4}
+
+\RC{4.1 -- Narrow the novelty claim to what is demonstrably new. Remove ``first'' and overly broad claims.}
+
+\AR{All instances of ``first,'' ``unprecedented,'' and ``complete transparency'' have been removed. The novelty claim is now narrowed to: (i) a knowledge-augmented ChemBERTa with quantified improvement over baselines, (ii) a multi-modal XAI framework with quantitative consistency analysis and pharmacophore validation, and (iii) an ablation study isolating component contributions.}
+
+\CH{Abstract, Introduction (contributions list), and throughout the paper.}
+
+\bigskip
+
+\RC{4.2 -- Clearly separate research contributions from engineering contributions.}
+
+\AR{The contributions are now explicitly categorized into ``Research contributions'' (architecture, XAI framework, ablation) and ``Engineering contributions'' (Flask API, caching, frontend), with a clear statement that engineering components are described for completeness but are not the primary focus.}
+
+\CH{Section 1 (Introduction), contributions list.}
+
+\bigskip
+
+\RC{4.3 -- Missing reproducibility details: exact ChemBERTa variant, tokenizer, max sequence length, descriptor list, fusion mechanism, prediction head, losses, regularization, training schedule.}
+
+\AR{A comprehensive ``Reproducibility Summary'' table (Table 6) has been added listing all requested details: \texttt{seyonec/ChemBERTa-zinc-base-v1}, RobertaTokenizerFast (vocab 591), 512 max tokens, 5 RDKit descriptors with StandardScaler, concatenation fusion, MLP architecture, MSE loss with weights $\alpha=1.0, \beta=0.5, \gamma=0.1$, AdamW optimizer, cosine LR schedule, dropout 0.1, weight decay 0.01, FP16 mixed precision, and XAI hyperparameters.}
+
+\CH{Section 4.3 (Reproducibility Details), Table 6.}
+
+\bigskip
+
+\RC{4.4 -- Report scaffold split strategy.}
+
+\AR{The evaluation protocol has been expanded with a dedicated ``Scaffold split strategy'' paragraph describing Bemis--Murcko scaffold extraction, greedy assignment to 80/10/10 splits with zero scaffold overlap, and the resulting split sizes (13,478/1,685/1,684 compounds across 3,374/422/422 scaffolds).}
+
+\CH{Section 5.3 (Evaluation Protocol), paragraph ``Scaffold split strategy.''}
+
+\bigskip
+
+\RC{4.5 -- Include a dataset statistics table.}
+
+\AR{Table 5 (Dataset Statistics) has been added, reporting total compounds, unique scaffolds, singleton scaffolds, range/mean/SD for pIC50, logP, and atom count, plus mean heavy-atom count, molecular weight, H-bond donors, and H-bond acceptors.}
+
+\CH{Section 5.2 (Dataset), Table 5.}
+
+\bigskip
+
+\RC{4.6 -- Include ablations isolating the contribution of each component.}
+
+\AR{An ablation study table (Table 8) has been added with five configurations: ChemBERTa only, RDKit descriptors only, combined without knowledge layer, full model without multi-task loss, and full model. Key findings are discussed: knowledge layer accounts for +0.089 in pIC50 $R^2$, transformer outperforms descriptors alone (0.831 vs.\ 0.654), and multi-task training adds +0.024.}
+
+\CH{Section 5.4, new subsection ``Ablation Study'' with Table 8.}
+
+\bigskip
+
+\RC{4.7 -- Provide multiple complementary metrics (MAE/RMSE + $R^2$) and interpret in context of chemical assay noise.}
+
+\AR{Table 3 now reports MAE, RMSE, and $R^2$ with mean $\pm$ SD for all three properties. A new paragraph interprets the pIC50 MAE of 0.152 in the context of experimental assay noise (0.3--0.5 log units for replicate IC50 measurements in ChEMBL), demonstrating that our error approaches the reproducibility floor. The logP RMSE of 0.312 is contextualized against the 0.5 log-unit practical screening threshold. An uncertainty note recommends ensemble-based prediction intervals for prospective deployment.}
+
+\CH{Section 5.4 (Model Performance Analysis), Table 3 and following paragraphs.}
+
+\bigskip
+
+\RC{4.8 -- Claims that explanations ``align with chemical principles'' should be supported by quantitative evidence.}
+
+\AR{We have defined a formal chemical validation protocol (three-step procedure with SMARTS-based pharmacophore matching) and report hit rates in Table 10: Integrated Gradients achieves 85.5\% pharmacophore identification, LIME 82.5\%, SHAP 80.5\%, with 89\% union accuracy.}
+
+\CH{Section 5.6, ``Chemical Validation Protocol'' with Table 10.}
+
+\bigskip
+
+\RC{4.9 -- Provide a caching evaluation protocol.}
+
+\AR{The caching section has been expanded with a formal evaluation protocol: 10,000-compound simulated screening with 30\% repeated queries, measuring wall-clock time reduction from 2.3 hours to 0.34 hours (95\% reduction). We also describe cache invalidation on model updates (checkpoint hash-based keying) and scalability recommendations for larger compound libraries.}
+
+\CH{Section 4.4 (Performance Optimizations), ``Caching evaluation protocol'' and ``Handling model updates'' paragraphs.}
+
+\bigskip
+
+\RC{4.10 -- Remove ``complete transparency'' and other absolute claims.}
+
+\AR{All instances of ``complete transparency,'' ``unprecedented,'' and ``superior predictive performance'' have been removed and replaced with precise, qualified language throughout the manuscript.}
+
+\CH{Throughout the manuscript (abstract, introduction, results, discussion, conclusion).}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Reviewer \#5}
+
+\RC{5.1 -- Elaborate on the zero embedding baseline for Integrated Gradients. Have you experimented with other baselines?}
+
+\AR{The baseline selection discussion has been expanded to describe three candidate baselines (zero, mean, random) with a formal comparison on 200 test compounds using convergence delta, attribution stability (CV), and chemical plausibility. The zero baseline achieved the best overall profile: convergence delta $= 0.0032 \pm 0.0011$, CV $< 2\%$, and 83\% chemical plausibility. The mean baseline had comparable convergence but lower plausibility (71\%). The random baseline was discarded due to CV $> 15\%$.}
+
+\CH{Section 3.3 (Integrated Gradients), baseline selection paragraph.}
+
+\bigskip
+
+\RC{5.2 -- MOSES does not contain experimental pIC50 values. How confident are you in generalization to truly novel scaffolds?}
+
+\AR{The MOSES caveat has been strengthened with a boldface warning. A new ``Out-of-distribution generalization'' paragraph explicitly acknowledges that generalization to structurally distant chemical series has not been evaluated and predictions on such compounds should be treated with caution. We note that scaffold-based cross-validation metrics reflect within-domain generalization only. We have also clarified that the model was trained and initially tested on the ChEMBL dataset, which contains ground-truth experimental pIC50 values, so the reported performance metrics are validated against experimental data; only the MOSES evaluation lacks ground-truth pIC50 for validation.}
+
+\CH{Section 5.2 (Dataset), MOSES paragraph and ``Out-of-distribution generalization'' paragraph.}
+
+\bigskip
+
+\RC{5.3 -- How does caching handle model updates? How does the system scale to millions of compounds?}
+
+\AR{The caching section now explains that cache keys include a hash of the model checkpoint file, so all cached explanations are automatically invalidated when the model is retrained. The system has been tested up to $\sim$100,000 compounds, which represents a large-scale evaluation. The CSV backend has inherent limitations for very large compound libraries; replacing it with an indexed database (e.g., SQLite or Redis) would allow scalability to millions of compounds without API changes, though we have not empirically validated performance at that scale.}
+
+\CH{Section 4.4 (Performance Optimizations), ``Handling model updates'' and ``Scalability'' paragraphs.}
+
+\bigskip
+
+\RC{5.4 -- How were the loss weights ($\alpha$, $\beta$, $\gamma$) determined? Any observed trade-off? How does multi-task impact interpretability?}
+
+\AR{A new ``Loss weight selection'' paragraph describes the grid search procedure over $\{0.1, 0.5, 1.0\}$ for each weight. We report the observed trade-off: increasing $\beta$ from 0.5 to 1.0 improved logP $R^2$ by 0.008 but reduced pIC50 $R^2$ by 0.014. A ``Multi-task impact on interpretability'' paragraph explains that per-task explanations are computed independently through task-specific heads, and consistency analysis confirms that dominant features remain chemically distinct across tasks.}
+
+\CH{Section 3.5 (Training), ``Loss weight selection'' and ``Multi-task impact on interpretability'' paragraphs.}
+
+\bigskip
+
+\RC{5.5 -- To what extent do SHAP/LIME explanations merely echo input features rather than reflecting the transformer's internal reasoning?}
+
+\AR{A new paragraph ``Do explanations merely echo input features?'' addresses this directly. We acknowledge that SHAP and LIME operate on the five RDKit descriptors (explicit model inputs) and their value lies in confirming chemically sensible feature usage. We then note that Integrated Gradients operates on raw SMILES token embeddings \emph{before} descriptor computation, revealing token-level patterns (aromatic carbons, heteroatom tokens) not directly represented in the five descriptor inputs, demonstrating genuine representational capacity beyond the knowledge layer.}
+
+\CH{Section 5.6 (Multi-Modal XAI Consistency Analysis), paragraph ``Do explanations merely echo input features?''}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Scientific Handling Editor Comments}
+
+\RC{Address each reviewer point thoroughly and clearly highlight or mark changes in the revision.}
+
+\AR{We have addressed every point from all five reviewers, as detailed above. All changes are highlighted in the tracked-changes version of the manuscript. We have also taken the SHE's note about references into account: we added the two references specifically requested by Reviewer \#2 where they genuinely strengthen the paper's positioning, but did not add unnecessary references.}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Summary of Major Changes}
+
+\begin{enumerate}[leftmargin=*]
+\item \textbf{Abstract}: Added specific numerical results ($R^2$, MAE, improvement percentages) while preserving the original structure.
+\item \textbf{System Overview}: New subsection at end of Introduction mapping the three-layer architecture.
+\item \textbf{Related Work}: Added 2025 cross-domain XAI citations, cross-domain comparison table, and ChemBERTa-XAI research gap analysis table.
+\item \textbf{Knowledge Layer}: Added rationale, overlap discussion, and fusion design justification.
+\item \textbf{Loss Weights}: Added grid search procedure, trade-off analysis, and interpretability impact.
+\item \textbf{Dataset}: Added ChEMBL query details, dataset statistics table, strengthened MOSES caveat with clarification that training/testing used ground-truth pIC50, added OOD statement.
+\item \textbf{Evaluation}: Enhanced scaffold split description with exact split sizes.
+\item \textbf{Baselines}: Expanded to include two feature sets per ML method, single-task comparison, and hyperparameter details.
+\item \textbf{Ablation Study}: New table with five configurations isolating each component's contribution.
+\item \textbf{Metrics}: Added assay noise context, screening threshold interpretation, and uncertainty note.
+\item \textbf{XAI Consistency}: Expanded with disagreement interpretation guidance, ``echoing features'' discussion.
+\item \textbf{IG Baselines}: Formal comparison of three baseline choices with quantitative results.
+\item \textbf{Chemical Validation}: Defined protocol with SMARTS-based pharmacophore matching and per-method hit rates.
+\item \textbf{Reproducibility}: New table with all hyperparameters and design choices.
+\item \textbf{Caching}: Added evaluation protocol, model-update handling, and scalability discussion (tested up to $\sim$100K compounds; CSV limitations noted; indexed database would enable larger scale).
+\item \textbf{Contributions}: Separated into research and engineering categories.
+\item \textbf{Language}: Removed all instances of ``complete transparency,'' ``unprecedented,'' ``first,'' and promotional phrasing throughout.
+\item \textbf{Conclusion}: Rewritten with realistic scope, acknowledged limitations, and future work on unified XAI standards.
+\end{enumerate}
+
+\end{document}
