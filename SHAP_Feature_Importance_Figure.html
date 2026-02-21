@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SHAP Feature Importance</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', 'Helvetica', sans-serif;
+            background-color: #ffffff;
+            padding: 40px;
+            color: #000000;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 30px;
+        }
+        
+        .title {
+            font-size: 20px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 10px;
+            color: #000000;
+        }
+        
+        .subtitle {
+            font-size: 14px;
+            text-align: center;
+            color: #333333;
+            margin-bottom: 30px;
+        }
+        
+        .chart-container {
+            background-color: #ffffff;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+        }
+        
+        .chart-wrapper {
+            position: relative;
+            height: 400px;
+            margin: 20px 0;
+        }
+        
+        .figure-label {
+            font-size: 12px;
+            font-weight: bold;
+            color: #000000;
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .caption {
+            font-size: 11px;
+            color: #333333;
+            text-align: center;
+            margin-top: 10px;
+            line-height: 1.4;
+            font-style: italic;
+        }
+        
+        .stats-table {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+        
+        .stats-table th,
+        .stats-table td {
+            border: 1px solid #cccccc;
+            padding: 8px;
+            text-align: left;
+        }
+        
+        .stats-table th {
+            background-color: #f5f5f5;
+            font-weight: bold;
+        }
+        
+        .stats-table tr:nth-child(even) {
+            background-color: #fafafa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="title">SHAP Feature Importance Analysis</div>
+        <div class="subtitle">Global Feature Impact on Predicted Properties</div>
+        
+        <div class="chart-container">
+            <div class="chart-wrapper">
+                <canvas id="shapBarChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="figure-label">Figure 3: SHAP Feature Importance for Predicted Properties</div>
+        <div class="caption">
+            Bar chart showing the mean absolute SHAP values for predicted molecular properties. 
+            The y-axis represents the mean SHAP impact (0 to 0.020), while the x-axis lists the 
+            predicted properties. Higher values indicate greater average contribution to model 
+            predictions across the entire dataset. This global analysis complements local 
+            explanations by showing which predicted properties are most influential overall.
+        </div>
+        
+        <table class="stats-table">
+            <thead>
+                <tr>
+                    <th>Predicted Property</th>
+                    <th>Mean SHAP Value</th>
+                    <th>Impact Level</th>
+                    <th>Interpretation</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Predicted_logP</strong></td>
+                    <td>0.0153</td>
+                    <td>High</td>
+                    <td>Highest impact - lipophilicity is a key driver of model predictions</td>
+                </tr>
+                <tr>
+                    <td><strong>Predicted_num_atoms</strong></td>
+                    <td>0.0148</td>
+                    <td>High</td>
+                    <td>High impact - molecular size significantly influences predictions</td>
+                </tr>
+                <tr>
+                    <td><strong>Predicted_pIC50</strong></td>
+                    <td>0.0072</td>
+                    <td>Moderate</td>
+                    <td>Moderate impact - predicted activity contributes to model output</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('shapBarChart').getContext('2d');
+        
+        // SHAP feature importance data
+        const shapData = {
+            labels: ['Predicted_pIC50', 'Predicted_logP', 'Predicted_num_atoms'],
+            datasets: [{
+                label: 'Mean SHAP Impact',
+                data: [0.0072, 0.0153, 0.0148],
+                backgroundColor: [
+                    'rgba(33, 150, 243, 0.7)',
+                    'rgba(76, 175, 80, 0.7)',
+                    'rgba(156, 39, 176, 0.7)'
+                ],
+                borderColor: [
+                    'rgba(33, 150, 243, 1)',
+                    'rgba(76, 175, 80, 1)',
+                    'rgba(156, 39, 176, 1)'
+                ],
+                borderWidth: 1.5
+            }]
+        };
+        
+        new Chart(ctx, {
+            type: 'bar',
+            data: shapData,
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'SHAP Feature Impact Chart',
+                        font: {
+                            size: 14,
+                            weight: 'bold'
+                        },
+                        color: '#000000',
+                        padding: {
+                            bottom: 20
+                        }
+                    },
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        enabled: true,
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleColor: '#ffffff',
+                        bodyColor: '#ffffff',
+                        borderColor: '#000000',
+                        borderWidth: 1,
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.parsed.x;
+                                return `Mean SHAP Value: ${value.toFixed(4)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Mean SHAP Impact',
+                            font: {
+                                size: 12,
+                                weight: 'bold'
+                            },
+                            color: '#000000'
+                        },
+                        min: 0,
+                        max: 0.020,
+                        ticks: {
+                            stepSize: 0.005,
+                            font: {
+                                size: 10
+                            },
+                            color: '#000000',
+                            callback: function(value) {
+                                return value.toFixed(3);
+                            }
+                        },
+                        grid: {
+                            color: '#e0e0e0',
+                            lineWidth: 1
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Predicted Properties',
+                            font: {
+                                size: 12,
+                                weight: 'bold'
+                            },
+                            color: '#000000'
+                        },
+                        ticks: {
+                            font: {
+                                size: 11
+                            },
+                            color: '#000000'
+                        },
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
+
+
