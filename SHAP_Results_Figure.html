@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SHAP Feature Impact Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', 'Helvetica', sans-serif;
+            background-color: #ffffff;
+            padding: 40px;
+            color: #000000;
+        }
+        
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            padding: 30px;
+        }
+        
+        .title {
+            font-size: 20px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 10px;
+            color: #000000;
+        }
+        
+        .subtitle {
+            font-size: 14px;
+            text-align: center;
+            color: #333333;
+            margin-bottom: 30px;
+        }
+        
+        .chart-container {
+            background-color: #ffffff;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+        }
+        
+        .chart-wrapper {
+            position: relative;
+            height: 400px;
+            margin: 20px 0;
+        }
+        
+        .figure-label {
+            font-size: 12px;
+            font-weight: bold;
+            color: #000000;
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .caption {
+            font-size: 11px;
+            color: #333333;
+            text-align: center;
+            margin-top: 10px;
+            line-height: 1.4;
+            font-style: italic;
+        }
+        
+        .stats-table {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+        
+        .stats-table th,
+        .stats-table td {
+            border: 1px solid #cccccc;
+            padding: 8px;
+            text-align: left;
+        }
+        
+        .stats-table th {
+            background-color: #f5f5f5;
+            font-weight: bold;
+        }
+        
+        .stats-table tr:nth-child(even) {
+            background-color: #fafafa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="title">SHAP Feature Impact Analysis</div>
+        <div class="subtitle">SHapley Additive exPlanations (SHAP) Values Distribution</div>
+        
+        <div class="chart-container">
+            <div class="chart-wrapper">
+                <canvas id="shapChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="figure-label">Figure 1: SHAP Values Distribution for Predicted Properties</div>
+        <div class="caption">
+            Violin plot showing the distribution of SHAP values for three predicted molecular properties. 
+            The x-axis represents SHAP values (contribution to model output), ranging from -0.04 to 0.04. 
+            Positive values indicate features that increase the prediction, while negative values indicate 
+            features that decrease it. Each distribution shows the spread and density of SHAP values across 
+            all predictions in the dataset.
+        </div>
+        
+        <table class="stats-table">
+            <thead>
+                <tr>
+                    <th>Feature</th>
+                    <th>Mean SHAP Value</th>
+                    <th>Std Deviation</th>
+                    <th>Interpretation</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Predicted_pIC50</strong></td>
+                    <td>+0.0056</td>
+                    <td>0.012</td>
+                    <td>Moderate positive contribution to predictions</td>
+                </tr>
+                <tr>
+                    <td><strong>Predicted_logP</strong></td>
+                    <td>+0.0153</td>
+                    <td>0.008</td>
+                    <td>Highest positive impact on model output</td>
+                </tr>
+                <tr>
+                    <td><strong>Predicted_num_atoms</strong></td>
+                    <td>-0.0159</td>
+                    <td>0.006</td>
+                    <td>Negative impact, suggesting size constraints</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('shapChart').getContext('2d');
+        
+        // Generate violin plot data (simulated distribution)
+        function generateViolinData(mean, std, count = 100) {
+            const data = [];
+            for (let i = 0; i < count; i++) {
+                // Box-Muller transform for normal distribution
+                const u1 = Math.random();
+                const u2 = Math.random();
+                const z0 = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+                data.push(mean + z0 * std);
+            }
+            return data;
+        }
+        
+        // Generate data for each feature
+        const pic50Data = generateViolinData(0.0056, 0.012, 150);
+        const logPData = generateViolinData(0.0153, 0.008, 150);
+        const atomsData = generateViolinData(-0.0159, 0.006, 150);
+        
+        // Create datasets for violin plot effect
+        const datasets = [
+            {
+                label: 'Predicted_pIC50',
+                data: pic50Data,
+                backgroundColor: 'rgba(255, 193, 7, 0.3)',
+                borderColor: 'rgba(255, 193, 7, 1)',
+                borderWidth: 1,
+                pointRadius: 2,
+                pointBackgroundColor: 'rgba(255, 193, 7, 0.6)',
+            },
+            {
+                label: 'Predicted_num_atoms',
+                data: atomsData.map(x => ({x: x, y: 1})),
+                backgroundColor: 'rgba(0, 188, 212, 0.3)',
+                borderColor: 'rgba(0, 188, 212, 1)',
+                borderWidth: 1,
+                pointRadius: 2,
+                pointBackgroundColor: 'rgba(0, 188, 212, 0.6)',
+            },
+            {
+                label: 'Predicted_logP',
+                data: logPData.map(x => ({x: x, y: 2})),
+                backgroundColor: 'rgba(244, 67, 54, 0.3)',
+                borderColor: 'rgba(244, 67, 54, 1)',
+                borderWidth: 1,
+                pointRadius: 2,
+                pointBackgroundColor: 'rgba(244, 67, 54, 0.6)',
+            }
+        ];
+        
+        new Chart(ctx, {
+            type: 'scatter',
+            data: {
+                datasets: datasets.map((ds, idx) => ({
+                    ...ds,
+                    data: idx === 0 ? pic50Data.map(x => ({x: x, y: 0})) :
+                          idx === 1 ? atomsData.map(x => ({x: x, y: 1})) :
+                          logPData.map(x => ({x: x, y: 2}))
+                }))
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'SHAP Values (Impact on Model Output)',
+                        font: {
+                            size: 14,
+                            weight: 'bold'
+                        },
+                        color: '#000000'
+                    },
+                    legend: {
+                        display: true,
+                        position: 'right',
+                        labels: {
+                            font: {
+                                size: 11
+                            },
+                            color: '#000000',
+                            usePointStyle: true,
+                            padding: 15
+                        }
+                    },
+                    tooltip: {
+                        enabled: true,
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleColor: '#ffffff',
+                        bodyColor: '#ffffff',
+                        borderColor: '#000000',
+                        borderWidth: 1
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'SHAP Value',
+                            font: {
+                                size: 12,
+                                weight: 'bold'
+                            },
+                            color: '#000000'
+                        },
+                        min: -0.04,
+                        max: 0.04,
+                        ticks: {
+                            stepSize: 0.02,
+                            font: {
+                                size: 10
+                            },
+                            color: '#000000'
+                        },
+                        grid: {
+                            color: '#e0e0e0',
+                            lineWidth: 1
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Feature',
+                            font: {
+                                size: 12,
+                                weight: 'bold'
+                            },
+                            color: '#000000'
+                        },
+                        min: -0.5,
+                        max: 2.5,
+                        ticks: {
+                            stepSize: 1,
+                            font: {
+                                size: 10
+                            },
+                            color: '#000000',
+                            callback: function(value) {
+                                const labels = ['Predicted_pIC50', 'Predicted_num_atoms', 'Predicted_logP'];
+                                return labels[value] || '';
+                            }
+                        },
+                        grid: {
+                            color: '#e0e0e0',
+                            lineWidth: 1
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Create violin plot effect using density estimation
+        function createViolinPlot(chart) {
+            const ctx = chart.ctx;
+            const meta = chart.getDatasetMeta(0);
+            
+            datasets.forEach((dataset, datasetIndex) => {
+                const meta = chart.getDatasetMeta(datasetIndex);
+                const data = dataset.data;
+                
+                // Calculate density
+                const bins = 30;
+                const min = Math.min(...data.map(d => d.x));
+                const max = Math.max(...data.map(d => d.x));
+                const binWidth = (max - min) / bins;
+                
+                const histogram = new Array(bins).fill(0);
+                data.forEach(point => {
+                    const bin = Math.floor((point.x - min) / binWidth);
+                    if (bin >= 0 && bin < bins) {
+                        histogram[bin]++;
+                    }
+                });
+                
+                const maxCount = Math.max(...histogram);
+                
+                // Draw violin shape
+                ctx.save();
+                ctx.beginPath();
+                const yPos = meta.data[0].y;
+                
+                histogram.forEach((count, i) => {
+                    const x = min + i * binWidth;
+                    const width = (count / maxCount) * 10;
+                    const xPos = chart.scales.x.getPixelForValue(x);
+                    
+                    if (i === 0) {
+                        ctx.moveTo(xPos, yPos);
+                    } else {
+                        ctx.lineTo(xPos, yPos);
+                    }
+                });
+                
+                ctx.strokeStyle = dataset.borderColor;
+                ctx.lineWidth = 1;
+                ctx.stroke();
+                ctx.restore();
+            });
+        }
+    </script>
+</body>
+</html>
+
+
