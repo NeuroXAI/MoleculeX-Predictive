@@ -1,0 +1,187 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="MoleculeX Training and Prediction Pipeline" id="moleculex-pipeline">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="1000" math="0" shadow="0" bg="1" backgroundColor="#ffffff">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        
+        <!-- Title -->
+        <mxCell id="title" value="MoleculeX-Predictive: Training and Prediction Pipeline" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=18;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="400" y="20" width="600" height="35" as="geometry" />
+        </mxCell>
+        
+        <!-- Training Section Header -->
+        <mxCell id="training-header" value="TRAINING PHASE" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E0E0E0;strokeColor=#000000;fontColor=#000000;fontSize=14;fontStyle=1;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="50" y="75" width="1300" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- ChEMBL Dataset -->
+        <mxCell id="chembl-db" value="ChEMBL Database&#xa;Molecules + 3 Properties&#xa;(pIC50, logP, num_atoms)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#F5F5F5;strokeColor=#000000;fontSize=11;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="50" y="130" width="150" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- ZINC Dataset -->
+        <mxCell id="zinc-db" value="ZINC Dataset&#xa;(Without Properties)&#xa;Large-scale pretraining data" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#F5F5F5;strokeColor=#000000;fontSize=11;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="250" y="130" width="150" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- SMILES Representation -->
+        <mxCell id="smiles-rep" value="SMILES&#xa;Textual Molecular&#xa;Representation" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D0D0D0;strokeColor=#000000;fontSize=11;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="450" y="150" width="140" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Pretraining Arrow -->
+        <mxCell id="pretrain-arrow" value="Pretraining" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;strokeWidth=2;fontSize=11;fontColor=#000000;" edge="1" parent="1" source="zinc-db" target="chemberta">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="600" y="400" as="sourcePoint" />
+            <mxPoint x="700" y="300" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="325" y="180" />
+              <mxPoint x="325" y="270" />
+              <mxPoint x="650" y="270" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Arrow from ChEMBL to SMILES -->
+        <mxCell id="chembl-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;strokeWidth=2;" edge="1" parent="1" source="chembl-db" target="smiles-rep">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Knowledge-based Fine-tuning -->
+        <mxCell id="knowledge-tuning" value="Knowledge-based&#xa;Fine-tuning&#xa;&#xa;• Constraints&#xa;• RDKit Descriptors&#xa;  (Molecular Weight,&#xa;  H-Bond Donors/Acceptors)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8E8E8;strokeColor=#000000;fontSize=10;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="650" y="130" width="180" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- ChemBERTa Training -->
+        <mxCell id="chemberta" value="Training on ChemBERTa&#xa;(RoBERTa-based Transformer)&#xa;&#xa;• Multi-task Learning&#xa;• Knowledge Augmentation&#xa;• Feature Fusion" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#C0C0C0;strokeColor=#000000;fontSize=11;fontColor=#000000;fontStyle=1;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="880" y="150" width="200" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrow from SMILES to ChemBERTa -->
+        <mxCell id="smiles-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;strokeWidth=2;" edge="1" parent="1" source="smiles-rep" target="chemberta">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrow from Knowledge-tuning to ChemBERTa -->
+        <mxCell id="knowledge-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;strokeWidth=2;" edge="1" parent="1" source="knowledge-tuning" target="chemberta">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Encoding Tensor Space -->
+        <mxCell id="encoding" value="Encoding Tensor Space&#xa;(768-dim embeddings)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D0D0D0;strokeColor=#000000;fontSize=11;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="150" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrow from ChemBERTa to Encoding -->
+        <mxCell id="chemberta-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;strokeWidth=2;" edge="1" parent="1" source="chemberta" target="encoding">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Evaluation -->
+        <mxCell id="evaluation" value="Evaluation&#xa;Training/Test Split (80/20)&#xa;&#xa;• MSE, MAE, R²&#xa;• Cross-validation" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#B0B0B0;strokeColor=#000000;fontSize=11;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="240" width="160" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrow from Encoding to Evaluation -->
+        <mxCell id="eval-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;strokeWidth=2;" edge="1" parent="1" source="encoding" target="evaluation">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Prediction Section Header -->
+        <mxCell id="prediction-header" value="PREDICTION PHASE" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E0E0E0;strokeColor=#000000;fontColor=#000000;fontSize=14;fontStyle=1;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="50" y="370" width="1300" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- New Molecule Input -->
+        <mxCell id="new-molecule" value="New Molecule&#xa;(SMILES String)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#000000;fontSize=11;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="50" y="440" width="140" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Encoding Tensor Space (Prediction) -->
+        <mxCell id="encoding-pred" value="Encoding Tensor Space&#xa;(Trained Model)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D0D0D0;strokeColor=#000000;fontSize=11;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="240" y="440" width="160" height="60" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrow from New Molecule to Encoding -->
+        <mxCell id="molecule-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;strokeWidth=2;" edge="1" parent="1" source="new-molecule" target="encoding-pred">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Predicted Properties -->
+        <mxCell id="predicted-props" value="Predicted Properties&#xa;&#xa;• pIC50&#xa;• logP&#xa;• num_atoms" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#C0C0C0;strokeColor=#000000;fontSize=11;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="450" y="440" width="140" height="80" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrow from Encoding to Predicted Properties -->
+        <mxCell id="encoding-pred-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;strokeWidth=2;" edge="1" parent="1" source="encoding-pred" target="predicted-props">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Explainable AI -->
+        <mxCell id="xai" value="Explainable AI (XAI)&#xa;&#xa;• SHAP&#xa;  (SHapley Additive exPlanations)&#xa;• LIME&#xa;  (Local Interpretable Model-agnostic)&#xa;• Integrated Gradients&#xa;• Counterfactual Explanations" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8E8E8;strokeColor=#000000;fontSize=11;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="640" y="420" width="220" height="120" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrow from Predicted Properties to XAI -->
+        <mxCell id="xai-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;strokeWidth=2;" edge="1" parent="1" source="predicted-props" target="xai">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Feature Contributions -->
+        <mxCell id="contributions" value="Feature Contributions&#xa;&#xa;• Global Feature Importance&#xa;• Local Prediction Explanations&#xa;• Feature Impact Analysis&#xa;• Model Interpretability" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#B0B0B0;strokeColor=#000000;fontSize=11;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="910" y="440" width="200" height="100" as="geometry" />
+        </mxCell>
+        
+        <!-- Arrow from XAI to Contributions -->
+        <mxCell id="contrib-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;strokeWidth=2;" edge="1" parent="1" source="xai" target="contributions">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        
+        <!-- Connection from Training Encoding to Prediction Encoding -->
+        <mxCell id="model-transfer" value="Trained Model" style="endArrow=classic;html=1;rounded=0;strokeColor=#000000;strokeWidth=2.5;dashed=1;dashPattern=8 8;fontSize=11;fontColor=#000000;fontStyle=2;" edge="1" parent="1" source="encoding" target="encoding-pred">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="600" y="400" as="sourcePoint" />
+            <mxPoint x="700" y="500" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1210" y="340" />
+              <mxPoint x="1210" y="410" />
+              <mxPoint x="320" y="410" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        
+        <!-- Legend/Notes -->
+        <mxCell id="legend-title" value="Legend" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1;fontColor=#000000;" vertex="1" parent="1">
+          <mxGeometry x="50" y="580" width="100" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-data" value="Data Sources" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#000000;fontSize=10;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="50" y="620" width="100" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-process" value="Processing Steps" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#D0D0D0;strokeColor=#000000;fontSize=10;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="170" y="620" width="100" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-model" value="Model Components" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#C0C0C0;strokeColor=#000000;fontSize=10;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="290" y="620" width="100" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-xai" value="XAI Methods" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E8E8E8;strokeColor=#000000;fontSize=10;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="410" y="620" width="100" height="30" as="geometry" />
+        </mxCell>
+        
+        <mxCell id="legend-output" value="Output/Results" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#B0B0B0;strokeColor=#000000;fontSize=10;fontColor=#000000;strokeWidth=1.5;" vertex="1" parent="1">
+          <mxGeometry x="530" y="620" width="100" height="30" as="geometry" />
+        </mxCell>
+        
+        <!-- Additional Notes -->
+        <mxCell id="notes" value="Notes:&#xa;• Training uses ChEMBL dataset with labeled properties (pIC50, logP, num_atoms)&#xa;• ZINC dataset provides large-scale pretraining for better molecular understanding&#xa;• Knowledge-based features (RDKit descriptors) enhance model performance&#xa;• XAI methods (SHAP, LIME, Integrated Gradients, Counterfactuals) provide transparency&#xa;• Model evaluation uses 80/20 train-test split with MSE, MAE, and R² metrics" style="text;html=1;strokeColor=#000000;fillColor=#FFFFFF;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;fontColor=#000000;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="680" width="650" height="100" as="geometry" />
+        </mxCell>
+        
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
