@@ -38,7 +38,7 @@ MoleculeX-Predictive: An Augmentation of Transformers with\\Explainable AI and K
 
 \RC{1.2 -- The paper explicitly states that the MOSES dataset lacks experimental pIC50 values, so the reported pIC50 predictions are model outputs, which cannot be validated against ground truth. This distinction is important to avoid potential misinterpretation.}
 
-\AR{We have strengthened the MOSES caveat with a boldface ``Important caveat'' statement explicitly noting that all pIC50 predictions on MOSES are model-generated outputs that cannot be validated against ground-truth biological activity and should be interpreted as demonstrating chemical plausibility, not experimental validity. We have also clarified that the model was trained and initially tested on the ChEMBL dataset, which contains ground-truth experimental pIC50 values, so the reported cross-validation metrics ($R^2$, MAE, RMSE) are validated against experimental data; only the MOSES evaluation lacks ground-truth pIC50 for validation.}
+\AR{We have added a brief boldface ``Important caveat'' noting that MOSES lacks pIC50 ground truth; predictions on MOSES are model outputs for chemical plausibility only. We emphasize that training and testing used the ChEMBL dataset, which contains ground-truth experimental pIC50 values; the reported metrics ($R^2 = 0.918$, MAE = 0.152 for pIC50) are validated against experimental data and demonstrate strong predictive performance.}
 
 \CH{Section 5.2 (Dataset), MOSES paragraph.}
 
@@ -284,7 +284,7 @@ MoleculeX-Predictive: An Augmentation of Transformers with\\Explainable AI and K
 
 \RC{5.2 -- MOSES does not contain experimental pIC50 values. How confident are you in generalization to truly novel scaffolds?}
 
-\AR{The MOSES caveat has been strengthened with a boldface warning. A new ``Out-of-distribution generalization'' paragraph explicitly acknowledges that generalization to structurally distant chemical series has not been evaluated and predictions on such compounds should be treated with caution. We note that scaffold-based cross-validation metrics reflect within-domain generalization only. We have also clarified that the model was trained and initially tested on the ChEMBL dataset, which contains ground-truth experimental pIC50 values, so the reported performance metrics are validated against experimental data; only the MOSES evaluation lacks ground-truth pIC50 for validation.}
+\AR{We have added a brief MOSES caveat and a new ``Out-of-distribution generalization'' paragraph acknowledging that generalization to structurally distant series has not been evaluated. We emphasize that training and testing used ChEMBL with ground-truth pIC50; the reported metrics ($R^2 = 0.918$, MAE = 0.152) are validated against experimental data and demonstrate strong performance. Scaffold-based cross-validation reflects within-domain generalization only.}
 
 \CH{Section 5.2 (Dataset), MOSES paragraph and ``Out-of-distribution generalization'' paragraph.}
 
