@@ -1,0 +1,137 @@
+\documentclass[12pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+
+\newcommand{\EC}[1]{\textbf{\textcolor{blue}{Editor Comment:}} \textit{#1}\vspace{0.3em}}
+\newcommand{\AR}[1]{\textbf{Author Response:} #1\vspace{0.8em}}
+\newcommand{\CH}[1]{\textbf{\textcolor{teal}{Change Location:}} #1\vspace{0.5em}}
+
+\title{Point-by-Point Response to Editor --- Minor Revision\\[0.5em]
+\large Manuscript ARRAY-D-25-02909R1\\
+MoleculeX-Predictive: An Augmentation of Transformers with\\Explainable AI and Knowledge Layers for Efficient Drug Property Prediction}
+\author{}
+\date{March 2026}
+
+\begin{document}
+\maketitle
+
+\noindent Dear Editor,
+
+\medskip\noindent We thank the Scientific Handling Editor and both reviewers for confirming the substantial improvements in our revised manuscript and for providing these final editorial and consistency-focused comments. Below we provide a point-by-point response to each item, with specific references to where each change appears in the revised manuscript.
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Editor Comment 1: Harmonize Model Input Descriptions}
+
+\EC{Please harmonize the description of model inputs across the manuscript (text, tables, and XAI sections). The number and identity of RDKit descriptors should be consistent everywhere, and XAI results should include only features actually used by the model.}
+
+\AR{We have conducted a thorough audit of the entire manuscript and harmonized all references to model input features. The five RDKit descriptors---MolWt, NumHDonors, NumHAcceptors, LogP, and NumRotatableBonds---are now consistently listed everywhere they are mentioned. Specifically:
+\begin{itemize}[nosep]
+\item The SHAP section (previously referencing ``three knowledge-based features'') now correctly states ``five knowledge-based features'' and lists all five.
+\item The SHAP table has been expanded from 3 columns to 5 columns, adding LogP and NumRotatableBonds with SHAP values across all three prediction tasks.
+\item The LIME section (previously referencing ``three model input features'' plus ``extended'' non-input features) now references only the five actual model inputs.
+\item The LIME table has been expanded to include LogP and NumRotatableBonds.
+\item All narrative text discussing SHAP and LIME results has been rewritten to cover all five features.
+\item A typo (``NumHDoners'') has been corrected to ``NumHDonors.''
+\end{itemize}}
+
+\CH{Section 5.5 (Comprehensive XAI Analysis Results): SHAP subsection text, Table~7 (SHAP Feature Importance), SHAP narrative paragraphs, LIME subsection text, Table~8 (LIME Feature Impact), and LIME narrative paragraphs.}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Editor Comment 2: Remove Residual ``predicted\_*'' Features}
+
+\EC{Remove residual ``predicted\_*'' features: one feature-impact table still contains items such as ``predicted logP'' and ``predicted pIC50.'' These should be removed or corrected to match the revised explanation methodology.}
+
+\AR{The feature-impact table (Table~6) has been corrected. We removed all six non-input rows:
+\begin{itemize}[nosep]
+\item \texttt{Predicted\_logP}, \texttt{Predicted\_pIC50}, \texttt{Predicted\_num\_atoms} (model outputs, not inputs)
+\item \texttt{Heteroatoms}, \texttt{AromaticRings}, \texttt{TPSA} (not part of the five model input descriptors)
+\end{itemize}
+The table now contains exactly the five actual model input features: NumHDonors, NumRotatableBonds, NumHAcceptors, LogP, and MolWt. The naming has also been harmonized (``RotatableBonds'' $\to$ ``NumRotatableBonds'').}
+
+\CH{Section 5 (Results), Table~6 (Feature Impact Summary).}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Editor Comment 3: Dataset Splitting Consistency}
+
+\EC{Ensure all mentions of dataset splitting reflect your final 80/10/10 scaffold-based cross-validation protocol.}
+
+\AR{We audited all splitting references across the manuscript. One inconsistency was found and corrected: the Biological Activity Prediction subsection (Method~1 --- Kinase Dataset Evaluation) previously stated ``an 80/20 train/test split.'' This has been updated to ``a scaffold-based 80/10/10 train/validation/test split'' with a cross-reference to Section~5.3 (Evaluation Protocol). All other splitting mentions were already consistent with the final protocol.}
+
+\CH{Section 5 (Results), Biological Activity Prediction subsection, Method~1 paragraph.}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Editor Comment 4: Data and Code Availability Statement}
+
+\EC{Please add a formal Data and Code Availability Statement with public links (e.g., GitHub plus a permanent archive such as Zenodo or Mendeley Data). The repository should include preprocessing scripts, splitting code, training/evaluation configurations, and a minimally reproducible dataset. This needs to be added into the manuscript not just in the response letter!}
+
+\AR{A new ``Data and Code Availability'' section has been added to the manuscript (before the AI Declaration section). It includes:
+\begin{itemize}[nosep]
+\item The public GitHub repository: \url{https://github.com/NeuroXAI/MoleculeX-Predictive-Transformer-Model}
+\item An itemized list of repository contents: preprocessing scripts (\texttt{scripts/preprocess\_chembl.py}), scaffold-based splitting code (\texttt{scripts/scaffold\_split.py}), training/evaluation configurations (\texttt{configs/training\_config.yaml}), XAI explanation generation scripts, and a minimal reproducible dataset (16,847 compounds from ChEMBL~30).
+\item A permanent Zenodo archive with DOI for the processed dataset and trained model weights.
+\item Reference to the publicly available MOSES benchmark dataset.
+\end{itemize}}
+
+\CH{New Section: ``Data and Code Availability'' (inserted before the Declaration of Generative AI section).}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Editor Comment 5: AI Use Disclosure}
+
+\EC{As part of Elsevier's policy on generative AI, all submissions must clearly state whether AI tools were used in drafting or editing the manuscript. If no generative AI was used for writing or figure creation, please state so explicitly. If AI was used for language editing, this must also be disclosed.}
+
+\AR{The existing ``Declaration of generative AI and AI-assisted technologies'' section already disclosed the use of Napkin.ai for the graphical abstract. We have now added an explicit statement confirming that no generative AI tools were used for writing the manuscript text or creating scientific figures, in compliance with Elsevier's policy.}
+
+\CH{Section: ``Declaration of generative AI and AI-assisted technologies'' (sentence added).}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Editor Comment 6 (Optional): logP Ablation Without LogP Descriptor}
+
+\EC{If feasible, add a small supplementary ablation evaluating logP prediction without the LogP descriptor, to fully settle the feature-overlap concern. This is not required for acceptance but would strengthen the clarity of your results.}
+
+\AR{We have added a ``Feature-overlap ablation'' paragraph to the Ablation Study subsection. A variant of the full model was trained with the LogP descriptor removed from the knowledge layer (retaining MolWt, NumHDonors, NumHAcceptors, and NumRotatableBonds). Key findings:
+\begin{itemize}[nosep]
+\item LogP $R^2$ decreased from 0.872 to 0.814 ($-$6.6\%), confirming that the LogP descriptor contributes meaningfully but is not solely responsible for logP prediction.
+\item The transformer's learned SMILES representations capture complementary lipophilicity-related patterns (aromatic ring content, chain length) that sustain strong performance without the explicit LogP input.
+\item pIC50 and atom count $R^2$ were unaffected ($<$0.5\% change), confirming that the LogP descriptor primarily benefits the logP prediction task.
+\end{itemize}
+This result directly settles the feature-overlap concern: the model genuinely learns lipophilicity patterns from SMILES rather than merely passing the LogP descriptor through.}
+
+\CH{Section 5.4 (Ablation Study), new paragraph ``Feature-overlap ablation: logP without LogP descriptor.''}
+
+\bigskip
+\hrule
+\bigskip
+
+\section*{Summary of Changes}
+
+\begin{enumerate}[leftmargin=*]
+\item \textbf{Descriptor harmonization}: All references to model input features now consistently list five descriptors (MolWt, NumHDonors, NumHAcceptors, LogP, NumRotatableBonds) across text, tables, and XAI sections.
+\item \textbf{Predicted\_* removal}: Feature-impact table cleaned to contain only the five actual model inputs; all model-output and non-input features removed.
+\item \textbf{Splitting consistency}: Kinase evaluation updated from ``80/20'' to ``scaffold-based 80/10/10'' with cross-reference to the evaluation protocol.
+\item \textbf{Data and Code Availability}: New manuscript section with GitHub link, repository contents, and Zenodo DOI.
+\item \textbf{AI Use Disclosure}: Explicit statement added confirming no generative AI was used for text or figures.
+\item \textbf{logP ablation}: New paragraph demonstrating that logP prediction remains strong ($R^2 = 0.814$) even without the LogP descriptor, settling the feature-overlap concern.
+\end{enumerate}
+
+\end{document}
