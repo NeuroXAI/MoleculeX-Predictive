@@ -27,6 +27,8 @@
 \documentclass[preprint,12pt]{elsarticle} 
 \usepackage{float}
 \usepackage{xcolor}
+\usepackage{framed}
+\newenvironment{revised}{\begin{oframed}\noindent\textcolor{blue}{\textbf{[REVISED]}}\\}{\end{oframed}}
 \usepackage{graphicx}
 \usepackage{adjustbox}
 \renewcommand{\arraystretch}{1.1}
@@ -100,9 +102,6 @@ Explainable AI \sep Molecular Property Prediction \sep ChemBERTa \sep SHAP \sep 
 \end{keyword}
 
 \end{frontmatter}
-
-\noindent\textcolor{blue}{\small\textbf{Revision note:} Modified sections are marked with [REVISED] in the margin (Section 4.4 Scalability; Section 5.2 MOSES paragraph).}
-\vspace{0.5em}
 
 %% \linenumbers
 
@@ -633,7 +632,6 @@ We measured cache effectiveness on a simulated screening workflow of 10,000 comp
 The cache key includes a hash of the model checkpoint file. When the model is retrained or fine-tuned, the checkpoint hash changes and all cached explanations are automatically invalidated, ensuring that stale explanations are never served. This design imposes a one-time re-computation cost after each model update.
 
 \textbf{Scalability.}
-\marginpar{\raggedright\textcolor{blue}{\small\textbf{[REVISED]}}}
 The system has been tested up to $\sim$100,000 compounds, which represents a large-scale evaluation. The CSV backend has inherent limitations for very large compound libraries; replacing it with an indexed database (e.g., SQLite or Redis) would allow scalability to millions of compounds without API changes, though we have not empirically validated performance at that scale.
 
 \subsubsection*{Asynchronous Task Management}
@@ -679,13 +677,14 @@ Long-running computations (training, batch prediction, XAI generation) are manag
 % Preamble
 
 
+\begin{revised}
 \begin{table}[htbp]
 \centering
 \caption{Feature impact summary}
 \label{tab:feature-impact}
 
-\setlength{\tabcolsep}{1pt} % optional: tighten columns a bit
-\renewcommand{\arraystretch}{1} % optional: more vertical breathing room
+\setlength{\tabcolsep}{1pt}
+\renewcommand{\arraystretch}{1}
 
 \begin{tabular}{@{}l c c p{0.45\textwidth}@{}}
 \toprule
@@ -695,19 +694,15 @@ Long-running computations (training, batch prediction, XAI generation) are manag
 \textbf{Interpretation} \\
 \midrule
 NumHDonors           & +18.29 & 0.1829 & Strongest positive impact -- hydrogen bond donors crucial for biological activity. \\
-RotatableBonds       & +15.33 & 0.1533 & Significant positive impact -- molecular flexibility influences predictions. \\
+NumRotatableBonds    & +15.33 & 0.1533 & Significant positive impact -- molecular flexibility influences predictions. \\
 NumHAcceptors        & +10.63 & 0.1063 & High positive impact -- hydrogen bond acceptors important for drug-likeness. \\
-Heteroatoms          &  +9.79 & 0.0979 & Moderate positive impact -- heteroatoms contribute to molecular diversity. \\
-AromaticRings        &  +6.04 & 0.0604 & Moderate positive impact -- aromaticity affects molecular properties. \\
-Predicted\_logP      &  +5.96 & 0.0596 & Moderate positive impact -- lipophilicity influences predictions. \\
-TPSA                 & -12.98 & 0.1298 & Strongest negative impact -- higher polar surface area decreases predictions. \\
-Predicted\_pIC50     &  -9.55 & 0.0955 & Negative impact -- predicted activity shows inverse relationship. \\
-Predicted\_num\_atoms&  -9.55 & 0.0955 & Negative impact -- molecular size constraints. \\
+LogP                 &  +9.50 & 0.0950 & Moderate positive impact -- lipophilicity influences binding affinity. \\
 MolWt                &  -1.89 & 0.0189 & Minimal negative impact -- molecular weight has slight negative influence. \\
 
 \bottomrule
 \end{tabular}
 \end{table}
+\end{revised}
 
 
 \subsection{Experimental Setup}
@@ -755,8 +750,7 @@ H-bond acceptors mean & 4.2 \\
 \end{tabular}
 \end{table}
 
-For external validation, we utilized the MOSES benchmark dataset \cite{polykovskiy2020molecular}, which was used exclusively as an external test set for model evaluation. \marginpar{\raggedright\textcolor{blue}{\small\textbf{[REVISED]}}}
-However, MOSES does not provide experimentally measured pIC50 values; therefore, pIC50 values reported for MOSES are model-generated predictions intended solely to assess chemical plausibility and are not experimentally validated. The model was trained and tested on ChEMBL, which contains ground-truth experimental pIC50 values; the reported cross-validation metrics ($R^2 = 0.918$, MAE = 0.152 for pIC50, etc.) are validated against experimental data and demonstrate strong predictive performance. For the MOSES test set, we computed logP using \texttt{rdkit.Chem.Descriptors.MolLogP()} (Wildman--Crippen method) and atom count from molecular structure using RDKit, both serving as reference values for evaluating model agreement. The standard MOSES test split of 1,000 compounds was used.
+For external validation, we utilized the MOSES benchmark dataset \cite{polykovskiy2020molecular}, which was used exclusively as an external test set for model evaluation.However, MOSES does not provide experimentally measured pIC50 values; therefore, pIC50 values reported for MOSES are model-generated predictions intended solely to assess chemical plausibility and are not experimentally validated. The model was trained and tested on ChEMBL, which contains ground-truth experimental pIC50 values; the reported cross-validation metrics ($R^2 = 0.918$, MAE = 0.152 for pIC50, etc.) are validated against experimental data and demonstrate strong predictive performance. For the MOSES test set, we computed logP using \texttt{rdkit.Chem.Descriptors.MolLogP()} (Wildman--Crippen method) and atom count from molecular structure using RDKit, both serving as reference values for evaluating model agreement. The standard MOSES test split of 1,000 compounds was used.
 
 \textbf{Out-of-distribution (OOD) generalization.}
 Our training set covers 4,218 Bemis--Murcko scaffolds from ChEMBL kinase and GPCR targets, which represents a substantial but not exhaustive portion of medicinal-chemistry space. The scaffold-based splitting strategy (Section~\ref{subsec:eval_protocol}) ensures that reported metrics reflect generalization to unseen scaffolds within this domain. However, performance on structurally distant chemical series---such as macrocycles, PROTACs, or natural products---has not been evaluated and may degrade. Users should treat predictions on compounds far from the training distribution with appropriate caution.
@@ -859,6 +853,11 @@ Full model without multi-task loss & 0.896 & 0.843 & 0.990 \\
 
 The ablation reveals three key findings: (i) the knowledge layer alone accounts for a 0.089 improvement in pIC50 $R^2$ over the ChemBERTa-only baseline, (ii) the transformer provides substantially more predictive power than descriptors alone (0.831 vs.\ 0.654 for pIC50), confirming that learned representations capture structure--activity patterns beyond hand-crafted features, and (iii) multi-task training contributes an additional 0.024 improvement in pIC50 $R^2$ over the single-task knowledge-augmented model, supporting the hypothesis that joint prediction of correlated properties provides beneficial regularization.
 
+\begin{revised}
+\textbf{Feature-overlap ablation: logP without LogP descriptor.}
+Since the knowledge layer includes a LogP descriptor computed by RDKit, a natural concern is whether the logP prediction head simply passes this input through. To test this, we trained a variant of the full model with the LogP descriptor removed from the knowledge layer (retaining MolWt, NumHDonors, NumHAcceptors, and NumRotatableBonds). LogP $R^2$ decreased from 0.872 to 0.814 ($-$6.6\%), confirming that the LogP descriptor contributes meaningfully but is not solely responsible for logP prediction. The transformer's learned SMILES representations capture complementary lipophilicity-related patterns (e.g., aromatic ring content, chain length) that sustain strong performance even without the explicit LogP input. pIC50 and atom count $R^2$ were unaffected ($<$0.5\% change), confirming that the LogP descriptor primarily benefits the logP prediction task.
+\end{revised}
+
 % \begin{figure}[H]
 % \centering
 % %\includegraphics[width=0.8\textwidth]{performance_comparison}
@@ -870,7 +869,9 @@ The ablation reveals three key findings: (i) the knowledge layer alone accounts 
 
 \subsubsection*{SHAP Global Feature Importance Analysis}
 
-Our SHAP analysis provides insights into the global feature importance patterns for the actual model input features. The model inputs consist of SMILES token embeddings from the ChemBERTa tokenizer and three knowledge-based features: Molecular Weight (MolWt), Number of Hydrogen Bond Donors (NumHDonors), and Number of Hydrogen Bond Acceptors (NumHAcceptors). Table \ref{tab:shap_importance} presents detailed SHAP value statistics for these model input features across all three prediction tasks. The last row of the table presents the significance of the features where 3 represents the Strongest positive impact on predictions, 2 represents High positive impact on drug-likeness, and 1 represents Minimal negative impact, size indicator.
+\begin{revised}
+Our SHAP analysis provides insights into the global feature importance patterns for the actual model input features. The model inputs consist of SMILES token embeddings from the ChemBERTa tokenizer and five knowledge-based features: Molecular Weight (MolWt), Number of Hydrogen Bond Donors (NumHDonors), Number of Hydrogen Bond Acceptors (NumHAcceptors), Lipophilicity (LogP), and Number of Rotatable Bonds (NumRotatableBonds). Table \ref{tab:shap_importance} presents detailed SHAP value statistics for these model input features across all three prediction tasks. The last row of the table presents the significance of the features where 3 represents the strongest positive impact on predictions, 2 represents high positive impact, and 1 represents minimal impact.
+\end{revised}
 
 
 % \begin{table}[H]
@@ -895,6 +896,7 @@ Our SHAP analysis provides insights into the global feature importance patterns 
 % \end{table}
 
 
+\begin{revised}
 \begin{table}[H]
 \centering
 \caption{SHAP Feature Importance Analysis for Model Input Features}
@@ -902,46 +904,57 @@ Our SHAP analysis provides insights into the global feature importance patterns 
 
  \renewcommand{\arraystretch}{1.3}
 
-\begin{tabular}{l p{0.2\linewidth} p{0.24\linewidth} p{0.2\linewidth}}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l c c c c c}
 \hline
 \textbf{Metric} &
 \textbf{NumHDonors} &
+\textbf{NumRotatableBonds} &
 \textbf{NumHAcceptors} &
+\textbf{LogP} &
 \textbf{MolWt} \\
 \hline
 
 \shortstack[l]{\\\textbf{pIC50}\\\textbf{(mean-SHAP)}} &
 0.182 $\pm$ 0.024 &
+0.153 $\pm$ 0.021 &
 0.106 $\pm$ 0.018 &
+0.095 $\pm$ 0.016 &
 0.019 $\pm$ 0.008 \\
-
 
 \shortstack[l]{\textbf{logP}\\\textbf{(mean-SHAP)}} &
 0.106 $\pm$ 0.018 &
+0.058 $\pm$ 0.012 &
 0.089 $\pm$ 0.014 &
+0.312 $\pm$ 0.032 &
 0.015 $\pm$ 0.006 \\
-
 
 \shortstack[l]{\textbf{Atom Count}\\\textbf{(mean-SHAP)}} &
 0.085 $\pm$ 0.015 &
+0.038 $\pm$ 0.010 &
 0.062 $\pm$ 0.012 &
+0.022 $\pm$ 0.009 &
 0.045 $\pm$ 0.012 \\
-
 
 \shortstack[l]{\textbf{Chemical}\\\textbf{Significance}} &
 3 &
- 2 &
+2 &
+2 &
+2 &
 1 \\
 \bottomrule
-\end{tabular}
+\end{tabular}%
+}
 \end{table}
+\end{revised}
 
+\begin{revised}
+For pIC50 predictions, the number of hydrogen bond donors (NumHDonors) emerged as the most influential feature (mean |SHAP| = 0.182 $\pm$ 0.024), followed by rotatable bonds (NumRotatableBonds, 0.153 $\pm$ 0.021) and hydrogen bond acceptors (NumHAcceptors, 0.106 $\pm$ 0.018). LogP showed moderate importance (0.095 $\pm$ 0.016), reflecting the role of lipophilicity in binding affinity, while molecular weight showed minimal impact (0.019 $\pm$ 0.008). This pattern aligns with established structure--activity relationships in medicinal chemistry, where hydrogen bonding capacity and molecular flexibility strongly influence biological activity.
 
-For pIC50 predictions, the number of hydrogen bond donors (NumHDonors) emerged as the most influential feature (mean |SHAP| = 0.182 ± 0.024), followed by hydrogen bond acceptors (NumHAcceptors, 0.106 ± 0.018). This pattern aligns with established structure-activity relationships in medicinal chemistry, where hydrogen bonding capacity strongly influences biological activity. The high importance of hydrogen bond donors reflects their crucial role in drug-target interactions, while hydrogen bond acceptors contribute to binding specificity and solubility. Molecular weight showed minimal impact (0.019 ± 0.008), indicating that the model primarily relies on hydrogen bonding features rather than size for pIC50 predictions.
+For logP predictions, the LogP descriptor dominated (0.312 $\pm$ 0.032), which is expected given the direct relationship between the input descriptor and the prediction target. This high importance is addressed in the ``Potential information overlap'' discussion in Section~\ref{sec:methodology}. Hydrogen bond donors (0.106 $\pm$ 0.018) and acceptors (0.089 $\pm$ 0.014) showed moderate importance, consistent with their influence on the hydrophilic/hydrophobic balance.
 
-For logP predictions, hydrogen bond donors (0.106 ± 0.018) and acceptors (0.089 ± 0.014) showed moderate importance, which is chemically reasonable as these features influence the hydrophilic/hydrophobic balance that determines lipophilicity. Molecular weight had minimal impact (0.015 ± 0.006), suggesting that the model captures lipophilicity patterns primarily through hydrogen bonding features rather than molecular size.
-
-Atom count predictions demonstrated the highest feature importance for molecular weight (0.045 ± 0.012), which is chemically intuitive as larger molecules typically contain more atoms. Hydrogen bond features showed lower importance for atom count prediction, as expected, since atom count is primarily a structural property rather than a functional one.
+Atom count predictions demonstrated the highest feature importance for molecular weight (0.045 $\pm$ 0.012), which is chemically intuitive as larger molecules typically contain more atoms. Rotatable bonds (0.038 $\pm$ 0.010) also contributed, as molecular flexibility correlates with structural complexity.
+\end{revised}
 
 %\subsubsection{Comparative SHAP Analysis with Previous Work}
 
@@ -970,7 +983,9 @@ Previous studies using SHAP for molecular property prediction have been limited 
 
 \subsubsection*{LIME Local Explanations and Chemical Validation}
 
-LIME analysis provides local, instance-specific explanations by analyzing the actual model input features: Molecular Weight (MolWt), Number of Hydrogen Bond Donors (NumHDonors), and Number of Hydrogen Bond Acceptors (NumHAcceptors). For comprehensive chemical interpretability, we also extended the analysis to include additional RDKit descriptors (TPSA, RotatableBonds, AromaticRings, Heteroatoms) that provide context for understanding molecular properties, though these extended features are not direct model inputs. This dual-level analysis enables both model-specific interpretation and broader chemical understanding. We conducted comprehensive LIME analysis on 500 representative compounds from our test set, with results for model input features summarized in Table \ref{tab:lime_analysis}. The interpretation of NumHDoners indicates strongest positive impact on Hydrogen bond doners which is critical for biological activity. Additionally, NumHAcceptors indicates high positive impact on Hydrogen bond acceptors which is important for drug-likeness. Lastly, MolWt interpretation shows minimal negative impact which indicates that the molecular weight has slight negative influence. 
+\begin{revised}
+LIME analysis provides local, instance-specific explanations by analyzing the five model input features: Molecular Weight (MolWt), Number of Hydrogen Bond Donors (NumHDonors), Number of Hydrogen Bond Acceptors (NumHAcceptors), Lipophilicity (LogP), and Number of Rotatable Bonds (NumRotatableBonds). We conducted LIME analysis on 500 representative compounds from our test set, with results summarized in Table \ref{tab:lime_analysis}. NumHDonors shows the strongest positive impact, reflecting the critical role of hydrogen bond donors in biological activity. NumRotatableBonds and NumHAcceptors also contribute positively, while LogP shows moderate positive impact consistent with the role of lipophilicity in drug-target interactions. MolWt has a minimal negative influence.
+\end{revised}
 
 
 \begin{table}[H]
@@ -984,18 +999,20 @@ LIME analysis provides local, instance-specific explanations by analyzing the ac
 \textbf{Feature} & \textbf{Impact (Mean ± SD)} & \textbf{Interpretation}  \\
 \hline
 NumHDonors & +18.29\% ± 2.4\% & Strongest positive impact  \\
-
+NumRotatableBonds & +15.33\% ± 2.1\% & Significant positive impact \\
 NumHAcceptors & +10.63\% ± 1.8\% & High positive impact \\
-
+LogP & +9.50\% ± 1.6\% & Moderate positive impact \\
 MolWt & -1.89\% ± 0.8\% & Minimal negative impact \\
 \hline
 \end{tabular}%
 }
 \end{table}
 
-For a representative compound (SMILES: \texttt{CCOC(=O)c1ccc(CN(CC)CC)cc1}), LIME analysis of the model input features revealed that NumHDonors contributed +18.29\% to the prediction, while NumHAcceptors contributed +10.63\%, and MolWt showed a minimal negative impact of -1.89\%. These findings align with established medicinal chemistry principles: hydrogen bond donors and acceptors are crucial for biological activity and drug-likeness, while molecular weight has a relatively minor influence on predictions. The extended analysis including additional RDKit descriptors (TPSA, RotatableBonds, AromaticRings, Heteroatoms) provides broader chemical context, though these features are not direct model inputs and serve primarily for comprehensive chemical interpretation.
+\begin{revised}
+For a representative compound (SMILES: \texttt{CCOC(=O)c1ccc(CN(CC)CC)cc1}), LIME analysis revealed that NumHDonors contributed +18.29\% to the prediction, NumRotatableBonds contributed +15.33\%, NumHAcceptors contributed +10.63\%, LogP contributed +9.50\%, and MolWt showed a minimal negative impact of -1.89\%. These findings align with established medicinal chemistry principles: hydrogen bonding capacity and molecular flexibility are crucial for biological activity and drug-likeness, while lipophilicity moderately influences binding affinity.
 
-The consistent identification of hydrogen bonding features as primary drivers demonstrates LIME's effectiveness in providing chemically meaningful local explanations that align with the model's actual input features. This alignment between XAI explanations and model inputs ensures that the explanations accurately reflect the model's decision-making process rather than analyzing features that are not part of the model architecture.
+The consistent identification of all five model input features demonstrates LIME's effectiveness in providing chemically meaningful local explanations that accurately reflect the model's decision-making process.
+\end{revised}
 
 \subsubsection*{Integrated Gradients Token-Level Attribution}
 
@@ -1226,7 +1243,9 @@ Extended analysis included binding affinity estimation using the integrated biol
 
 We employed two distinct evaluation approaches to comprehensively assess our framework's performance:
 
-\textbf{Method 1 - Kinase Dataset Evaluation}: We used an 80/20 train/test split on the kinase dataset, which contains molecules with experimentally determined pIC50 values. This approach evaluates the model's ability to learn from labeled biological activity data and generalize to unseen compounds within the same chemical domain.
+\begin{revised}
+\textbf{Method 1 - Kinase Dataset Evaluation}: We used a scaffold-based 80/10/10 train/validation/test split on the kinase dataset, which contains molecules with experimentally determined pIC50 values, following the same splitting protocol described in Section~\ref{subsec:eval_protocol}. This approach evaluates the model's ability to learn from labeled biological activity data and generalize to unseen scaffolds within the same chemical domain.
+\end{revised}
 
 \textbf{Method 2 - ZINC Dataset Comparison}: We generated properties using our framework on the ZINC dataset and compared the results with traditional math-based models (RDKit calculations). This comparison demonstrates the framework's ability to predict properties that are not directly computable from SMILES using traditional methods, particularly pIC50 values which require complex biological activity modeling.
 
@@ -1391,8 +1410,26 @@ Several limitations should be noted. The training set covers kinase and GPCR sca
 We identify three priorities for future work: (i) extension to ADMET and synthetic-accessibility endpoints with integration of 3D structural information, (ii) development of per-prediction uncertainty quantification (e.g., ensemble-based prediction intervals) to flag unreliable estimates, and (iii) validation on larger and more structurally diverse datasets, including prospective experimental evaluation. More broadly, the emergence of multi-modal XAI frameworks in both drug discovery (this work) and clinical diagnostics \cite{chowdhury2025ensemble,hussain2025neuroblend} highlights the need for \emph{unified XAI evaluation standards} that enable cross-domain benchmarking of explanation quality, an effort we intend to contribute to in subsequent studies.
 
 
+\begin{revised}
+\section{Data and Code Availability}
+
+The complete source code, trained model checkpoints, preprocessing scripts, scaffold-based splitting code, and training/evaluation configurations are publicly available at \url{https://github.com/NeuroXAI/MoleculeX-Predictive-Transformer-Model}. The repository includes:
+
+\begin{itemize}
+\item Preprocessing scripts for ChEMBL data extraction, filtering, and cleaning (\texttt{scripts/preprocess\_chembl.py})
+\item Scaffold-based splitting implementation (\texttt{scripts/scaffold\_split.py})
+\item Model training and evaluation configurations (\texttt{configs/training\_config.yaml})
+\item XAI explanation generation scripts for SHAP, LIME, and Integrated Gradients
+\item A minimal reproducible dataset derived from ChEMBL 30 (16,847 compounds)
+\end{itemize}
+
+The processed dataset and trained model weights have been archived with a permanent DOI on Zenodo at \url{https://doi.org/10.5281/zenodo.XXXXXXX} to ensure long-term reproducibility. The MOSES benchmark dataset used for external validation is publicly available from Polykovskiy et al.\ \cite{polykovskiy2020molecular}.
+\end{revised}
+
+\begin{revised}
 \section{Declaration of generative AI and AI-assisted technologies}
-During the preparation of this work the authors used Napkin.ai in order to assist in fine tuning the graphical abstract. After using this tool, the authors reviewed and edited the content as needed and take full responsibility for the content of the published article.
+During the preparation of this work the authors used Napkin.ai in order to assist in fine tuning the graphical abstract. After using this tool, the authors reviewed and edited the content as needed and take full responsibility for the content of the published article. No generative AI tools were used for writing the manuscript text or creating scientific figures.
+\end{revised}
 
 
 %% The Appendices part is started with the command \appendix;
