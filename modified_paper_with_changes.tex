@@ -28,7 +28,8 @@
 \usepackage{float}
 \usepackage{xcolor}
 \usepackage{framed}
-\newenvironment{revised}{\begin{oframed}\noindent\textcolor{blue}{\textbf{[REVISED]}}\\}{\end{oframed}}
+\newcommand{\revisedstart}{\noindent\textcolor{blue}{\rule{\textwidth}{1pt}}\\\noindent\textcolor{blue}{\textbf{[REVISED --- start]}}\vspace{0.3em}}
+\newcommand{\revisedend}{\vspace{0.3em}\noindent\textcolor{blue}{\textbf{[REVISED --- end]}}\\\noindent\textcolor{blue}{\rule{\textwidth}{1pt}}\vspace{0.5em}}
 \usepackage{graphicx}
 \usepackage{adjustbox}
 \renewcommand{\arraystretch}{1.1}
@@ -677,7 +678,7 @@ Long-running computations (training, batch prediction, XAI generation) are manag
 % Preamble
 
 
-\begin{revised}
+\revisedstart
 \begin{table}[htbp]
 \centering
 \caption{Feature impact summary}
@@ -702,7 +703,7 @@ MolWt                &  -1.89 & 0.0189 & Minimal negative impact -- molecular we
 \bottomrule
 \end{tabular}
 \end{table}
-\end{revised}
+\revisedend
 
 
 \subsection{Experimental Setup}
@@ -853,10 +854,10 @@ Full model without multi-task loss & 0.896 & 0.843 & 0.990 \\
 
 The ablation reveals three key findings: (i) the knowledge layer alone accounts for a 0.089 improvement in pIC50 $R^2$ over the ChemBERTa-only baseline, (ii) the transformer provides substantially more predictive power than descriptors alone (0.831 vs.\ 0.654 for pIC50), confirming that learned representations capture structure--activity patterns beyond hand-crafted features, and (iii) multi-task training contributes an additional 0.024 improvement in pIC50 $R^2$ over the single-task knowledge-augmented model, supporting the hypothesis that joint prediction of correlated properties provides beneficial regularization.
 
-\begin{revised}
+\revisedstart
 \textbf{Feature-overlap ablation: logP without LogP descriptor.}
 Since the knowledge layer includes a LogP descriptor computed by RDKit, a natural concern is whether the logP prediction head simply passes this input through. To test this, we trained a variant of the full model with the LogP descriptor removed from the knowledge layer (retaining MolWt, NumHDonors, NumHAcceptors, and NumRotatableBonds). LogP $R^2$ decreased from 0.872 to 0.814 ($-$6.6\%), confirming that the LogP descriptor contributes meaningfully but is not solely responsible for logP prediction. The transformer's learned SMILES representations capture complementary lipophilicity-related patterns (e.g., aromatic ring content, chain length) that sustain strong performance even without the explicit LogP input. pIC50 and atom count $R^2$ were unaffected ($<$0.5\% change), confirming that the LogP descriptor primarily benefits the logP prediction task.
-\end{revised}
+\revisedend
 
 % \begin{figure}[H]
 % \centering
@@ -869,9 +870,9 @@ Since the knowledge layer includes a LogP descriptor computed by RDKit, a natura
 
 \subsubsection*{SHAP Global Feature Importance Analysis}
 
-\begin{revised}
+\revisedstart
 Our SHAP analysis provides insights into the global feature importance patterns for the actual model input features. The model inputs consist of SMILES token embeddings from the ChemBERTa tokenizer and five knowledge-based features: Molecular Weight (MolWt), Number of Hydrogen Bond Donors (NumHDonors), Number of Hydrogen Bond Acceptors (NumHAcceptors), Lipophilicity (LogP), and Number of Rotatable Bonds (NumRotatableBonds). Table \ref{tab:shap_importance} presents detailed SHAP value statistics for these model input features across all three prediction tasks. The last row of the table presents the significance of the features where 3 represents the strongest positive impact on predictions, 2 represents high positive impact, and 1 represents minimal impact.
-\end{revised}
+\revisedend
 
 
 % \begin{table}[H]
@@ -896,7 +897,7 @@ Our SHAP analysis provides insights into the global feature importance patterns 
 % \end{table}
 
 
-\begin{revised}
+\revisedstart
 \begin{table}[H]
 \centering
 \caption{SHAP Feature Importance Analysis for Model Input Features}
@@ -946,15 +947,15 @@ Our SHAP analysis provides insights into the global feature importance patterns 
 \end{tabular}%
 }
 \end{table}
-\end{revised}
+\revisedend
 
-\begin{revised}
+\revisedstart
 For pIC50 predictions, the number of hydrogen bond donors (NumHDonors) emerged as the most influential feature (mean |SHAP| = 0.182 $\pm$ 0.024), followed by rotatable bonds (NumRotatableBonds, 0.153 $\pm$ 0.021) and hydrogen bond acceptors (NumHAcceptors, 0.106 $\pm$ 0.018). LogP showed moderate importance (0.095 $\pm$ 0.016), reflecting the role of lipophilicity in binding affinity, while molecular weight showed minimal impact (0.019 $\pm$ 0.008). This pattern aligns with established structure--activity relationships in medicinal chemistry, where hydrogen bonding capacity and molecular flexibility strongly influence biological activity.
 
 For logP predictions, the LogP descriptor dominated (0.312 $\pm$ 0.032), which is expected given the direct relationship between the input descriptor and the prediction target. This high importance is addressed in the ``Potential information overlap'' discussion in Section~\ref{sec:methodology}. Hydrogen bond donors (0.106 $\pm$ 0.018) and acceptors (0.089 $\pm$ 0.014) showed moderate importance, consistent with their influence on the hydrophilic/hydrophobic balance.
 
 Atom count predictions demonstrated the highest feature importance for molecular weight (0.045 $\pm$ 0.012), which is chemically intuitive as larger molecules typically contain more atoms. Rotatable bonds (0.038 $\pm$ 0.010) also contributed, as molecular flexibility correlates with structural complexity.
-\end{revised}
+\revisedend
 
 %\subsubsection{Comparative SHAP Analysis with Previous Work}
 
@@ -983,9 +984,9 @@ Previous studies using SHAP for molecular property prediction have been limited 
 
 \subsubsection*{LIME Local Explanations and Chemical Validation}
 
-\begin{revised}
+\revisedstart
 LIME analysis provides local, instance-specific explanations by analyzing the five model input features: Molecular Weight (MolWt), Number of Hydrogen Bond Donors (NumHDonors), Number of Hydrogen Bond Acceptors (NumHAcceptors), Lipophilicity (LogP), and Number of Rotatable Bonds (NumRotatableBonds). We conducted LIME analysis on 500 representative compounds from our test set, with results summarized in Table \ref{tab:lime_analysis}. NumHDonors shows the strongest positive impact, reflecting the critical role of hydrogen bond donors in biological activity. NumRotatableBonds and NumHAcceptors also contribute positively, while LogP shows moderate positive impact consistent with the role of lipophilicity in drug-target interactions. MolWt has a minimal negative influence.
-\end{revised}
+\revisedend
 
 
 \begin{table}[H]
@@ -1008,11 +1009,11 @@ MolWt & -1.89\% ± 0.8\% & Minimal negative impact \\
 }
 \end{table}
 
-\begin{revised}
+\revisedstart
 For a representative compound (SMILES: \texttt{CCOC(=O)c1ccc(CN(CC)CC)cc1}), LIME analysis revealed that NumHDonors contributed +18.29\% to the prediction, NumRotatableBonds contributed +15.33\%, NumHAcceptors contributed +10.63\%, LogP contributed +9.50\%, and MolWt showed a minimal negative impact of -1.89\%. These findings align with established medicinal chemistry principles: hydrogen bonding capacity and molecular flexibility are crucial for biological activity and drug-likeness, while lipophilicity moderately influences binding affinity.
 
 The consistent identification of all five model input features demonstrates LIME's effectiveness in providing chemically meaningful local explanations that accurately reflect the model's decision-making process.
-\end{revised}
+\revisedend
 
 \subsubsection*{Integrated Gradients Token-Level Attribution}
 
@@ -1137,6 +1138,7 @@ Integrated Gradients achieves the highest per-method accuracy (85.5\%) because i
 % \label{fig:xai_analysis_comprehensive}
 % \end{figure}
 
+\clearpage
 \subsection{Case Study: Drug-like Molecule Analysis}
 
 To demonstrate practical utility, we analyzed a drug-like molecule (Ibuprofen, SMILES: \texttt{CC(C)Cc1ccc(C(C)C(=O)O)cc1}) using our complete XAI framework. The results are presented in Table \ref{tab:ibuprofen}:
@@ -1235,6 +1237,7 @@ The CSV-based caching system reduced repeated explanation computation time by 95
 % \item Average task completion time: 2.3 minutes for complete molecular analysis
 % \end{itemize}
 
+\clearpage
 \subsection*{Biological Activity Prediction}
 
 Extended analysis included binding affinity estimation using the integrated biological activity module. The system successfully predicted binding affinities for 95\% of test compounds within ±1.0 log units of experimental values, with SHAP analysis correctly identifying key pharmacophore features in 82\% of cases.
@@ -1243,9 +1246,9 @@ Extended analysis included binding affinity estimation using the integrated biol
 
 We employed two distinct evaluation approaches to comprehensively assess our framework's performance:
 
-\begin{revised}
+\revisedstart
 \textbf{Method 1 - Kinase Dataset Evaluation}: We used a scaffold-based 80/10/10 train/validation/test split on the kinase dataset, which contains molecules with experimentally determined pIC50 values, following the same splitting protocol described in Section~\ref{subsec:eval_protocol}. This approach evaluates the model's ability to learn from labeled biological activity data and generalize to unseen scaffolds within the same chemical domain.
-\end{revised}
+\revisedend
 
 \textbf{Method 2 - ZINC Dataset Comparison}: We generated properties using our framework on the ZINC dataset and compared the results with traditional math-based models (RDKit calculations). This comparison demonstrates the framework's ability to predict properties that are not directly computable from SMILES using traditional methods, particularly pIC50 values which require complex biological activity modeling.
 
@@ -1264,6 +1267,7 @@ The superiority of MoleculeX-Predictive over traditional approaches is evident i
 % \label{fig:ui_overview}
 % \end{figure}
 
+\clearpage
 \section{Discussion}
 \label{sec:discussion}
 
@@ -1349,7 +1353,7 @@ Our framework addresses several critical limitations of existing molecular prope
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=1.1\textwidth]{figures/shap_lime.pdf}
+\includegraphics[width=\textwidth]{figures/shap_lime.pdf}
 \caption{Comparative Analysis of LIME and SHAP Explanations.
 Side-by-side comparison of LIME (left) and SHAP (right) feature importance analyses. LIME provides local, instance-specific explanations showing feature impacts for individual predictions, while SHAP offers global feature importance across the entire dataset. Together, these methods provide comprehensive interpretability, enabling both local understanding of specific predictions and global insights into model behavior.}
 \label{fig:shap_lime}
@@ -1410,7 +1414,8 @@ Several limitations should be noted. The training set covers kinase and GPCR sca
 We identify three priorities for future work: (i) extension to ADMET and synthetic-accessibility endpoints with integration of 3D structural information, (ii) development of per-prediction uncertainty quantification (e.g., ensemble-based prediction intervals) to flag unreliable estimates, and (iii) validation on larger and more structurally diverse datasets, including prospective experimental evaluation. More broadly, the emergence of multi-modal XAI frameworks in both drug discovery (this work) and clinical diagnostics \cite{chowdhury2025ensemble,hussain2025neuroblend} highlights the need for \emph{unified XAI evaluation standards} that enable cross-domain benchmarking of explanation quality, an effort we intend to contribute to in subsequent studies.
 
 
-\begin{revised}
+\clearpage
+\revisedstart
 \section{Data and Code Availability}
 
 The complete source code, trained model checkpoints, preprocessing scripts, scaffold-based splitting code, and training/evaluation configurations are publicly available at \url{https://github.com/NeuroXAI/MoleculeX-Predictive-Transformer-Model}. The repository includes:
@@ -1424,12 +1429,12 @@ The complete source code, trained model checkpoints, preprocessing scripts, scaf
 \end{itemize}
 
 The processed dataset and trained model weights have been archived with a permanent DOI on Zenodo at \url{https://doi.org/10.5281/zenodo.XXXXXXX} to ensure long-term reproducibility. The MOSES benchmark dataset used for external validation is publicly available from Polykovskiy et al.\ \cite{polykovskiy2020molecular}.
-\end{revised}
+\revisedend
 
-\begin{revised}
+\revisedstart
 \section{Declaration of generative AI and AI-assisted technologies}
 During the preparation of this work the authors used Napkin.ai in order to assist in fine tuning the graphical abstract. After using this tool, the authors reviewed and edited the content as needed and take full responsibility for the content of the published article. No generative AI tools were used for writing the manuscript text or creating scientific figures.
-\end{revised}
+\revisedend
 
 
 %% The Appendices part is started with the command \appendix;
