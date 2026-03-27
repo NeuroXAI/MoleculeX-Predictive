@@ -1122,6 +1122,7 @@ Integrated Gradients achieves the highest per-method accuracy (85.5\%) because i
 % \label{fig:xai_analysis_comprehensive}
 % \end{figure}
 
+\clearpage
 \subsection{Case Study: Drug-like Molecule Analysis}
 
 To demonstrate practical utility, we analyzed a drug-like molecule (Ibuprofen, SMILES: \texttt{CC(C)Cc1ccc(C(C)C(=O)O)cc1}) using our complete XAI framework. The results are presented in Table \ref{tab:ibuprofen}:
@@ -1220,6 +1221,7 @@ The CSV-based caching system reduced repeated explanation computation time by 95
 % \item Average task completion time: 2.3 minutes for complete molecular analysis
 % \end{itemize}
 
+\clearpage
 \subsection*{Biological Activity Prediction}
 
 Extended analysis included binding affinity estimation using the integrated biological activity module. The system successfully predicted binding affinities for 95\% of test compounds within ±1.0 log units of experimental values, with SHAP analysis correctly identifying key pharmacophore features in 82\% of cases.
@@ -1247,6 +1249,7 @@ The superiority of MoleculeX-Predictive over traditional approaches is evident i
 % \label{fig:ui_overview}
 % \end{figure}
 
+\clearpage
 \section{Discussion}
 \label{sec:discussion}
 
@@ -1332,7 +1335,7 @@ Our framework addresses several critical limitations of existing molecular prope
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=1.1\textwidth]{figures/shap_lime.pdf}
+\includegraphics[width=\textwidth]{figures/shap_lime.pdf}
 \caption{Comparative Analysis of LIME and SHAP Explanations.
 Side-by-side comparison of LIME (left) and SHAP (right) feature importance analyses. LIME provides local, instance-specific explanations showing feature impacts for individual predictions, while SHAP offers global feature importance across the entire dataset. Together, these methods provide comprehensive interpretability, enabling both local understanding of specific predictions and global insights into model behavior.}
 \label{fig:shap_lime}
@@ -1393,6 +1396,7 @@ Several limitations should be noted. The training set covers kinase and GPCR sca
 We identify three priorities for future work: (i) extension to ADMET and synthetic-accessibility endpoints with integration of 3D structural information, (ii) development of per-prediction uncertainty quantification (e.g., ensemble-based prediction intervals) to flag unreliable estimates, and (iii) validation on larger and more structurally diverse datasets, including prospective experimental evaluation. More broadly, the emergence of multi-modal XAI frameworks in both drug discovery (this work) and clinical diagnostics \cite{chowdhury2025ensemble,hussain2025neuroblend} highlights the need for \emph{unified XAI evaluation standards} that enable cross-domain benchmarking of explanation quality, an effort we intend to contribute to in subsequent studies.
 
 
+\clearpage
 \section{Data and Code Availability}
 
 The complete source code, trained model checkpoints, preprocessing scripts, scaffold-based splitting code, and training/evaluation configurations are publicly available at \url{https://github.com/NeuroXAI/MoleculeX-Predictive-Transformer-Model}. The repository includes:
