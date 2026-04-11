@@ -200,7 +200,7 @@ Pharmacophore validation & \texttimes & \texttimes & \texttimes & \checkmark \\
 
 \subsection{Transformer Models in Chemical Informatics}
 
-The application of transformer architectures to chemical informatics represents a significant paradigm shift from traditional descriptor-based approaches. The foundational "Attention is All You Need" paper \cite{vaswani2017attention} introduced the transformer architecture that revolutionized natural language processing and has since been adapted for molecular property prediction. 
+The application of transformer architectures to chemical informatics represents a significant paradigm shift from traditional descriptor-based approaches. The foundational "Attention is All You Need" paper, published in Advances in Neural Information Processing Systems, introduced the transformer architecture that revolutionized natural language processing and has since been adapted for molecular property prediction \cite{vaswani2017attention}. 
 % Figure \ref{fig:transformer_architecture} illustrates the original transformer architecture, showing the key components including multi-head attention mechanisms, feed-forward networks, and residual connections that enable effective sequence modeling.
 
 % \begin{figure}[H]
@@ -234,13 +234,6 @@ The integration of domain-specific knowledge into transformer models represents 
 Our approach integrates RDKit-derived chemical descriptors with ChemBERTa embeddings, achieving superior performance compared to standard ChemBERTa implementations. The knowledge integration layer provides explicit chemical information that complements learned representations, resulting in more accurate and interpretable predictions. This hybrid approach addresses the limitations of purely data-driven methods while maintaining the representational power of transformer architectures.
 
 \subsection{Integrated Gradients in Molecular Context}
-\begin{figure}[H]
-\centering
-\includegraphics[width=1\textwidth]{figures/figure1.pdf}
-\caption{Complete SMILES Pipeline.}
-\label{fig:complete_workflow}
-\end{figure}
-The diagram shown in Fig. \ref{fig:complete_workflow} illustrates the complete pipeline from SMILES input through data preprocessing, knowledge-augmented model processing, multi-modal XAI explanation generation, and result output. Key components include: (1) SMILES preprocessing with RDKit standardization, (2) Chemical descriptor extraction and feature engineering, (3) ChemBERTa transformer processing with attention mechanisms, (4) Knowledge integration layer combining learned embeddings with RDKit descriptors, (5) Multi-task prediction heads for pIC50, logP, and atom count, (6) Multi-modal XAI engine with SHAP, LIME, and Integrated Gradients, and (7) CSV-based caching system for scalable explanation generation.
 
 Integrated Gradients provides a third perspective by attributing predictions to input features through the integration of gradients along a path from a baseline to the actual input \cite{sundararajan2017axiomatic}. This method has proven particularly effective for neural networks and offers insights into how different parts of the input contribute to the final prediction. In molecular property prediction, Integrated Gradients can reveal which specific SMILES tokens and chemical descriptors contribute most significantly to predictions.
 
@@ -285,6 +278,15 @@ Recent studies have demonstrated the effectiveness of Integrated Gradients in un
 
 
 \subsection{System Architecture Overview}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=1\textwidth]{figures/figure1.pdf}
+\caption{Complete SMILES Pipeline.}
+\label{fig:complete_workflow}
+\end{figure}
+
+The diagram shown in Fig. \ref{fig:complete_workflow} illustrates the complete pipeline from SMILES input through data preprocessing, knowledge-augmented model processing, multi-modal XAI explanation generation, and result output. Key components include: (1) SMILES preprocessing with RDKit standardization, (2) Chemical descriptor extraction and feature engineering, (3) ChemBERTa transformer processing with attention mechanisms, (4) Knowledge integration layer combining learned embeddings with RDKit descriptors, (5) Multi-task prediction heads for pIC50, logP, and atom count, (6) Multi-modal XAI engine with SHAP, LIME, and Integrated Gradients, and (7) CSV-based caching system for scalable explanation generation.
 
 As shown in Figure \ref{fig:complete_workflow}, MoleculeX-Predictive implements a multi-layered architecture designed to seamlessly integrate predictive modeling with comprehensive explainability. The system comprises four primary components: (1) a knowledge-augmented ChemBERTa model for property prediction, (2) a multi-modal XAI engine implementing SHAP, LIME, and Integrated Gradients, (3) a Flask-based backend API for model orchestration and data management, and (4) a Next.js frontend providing interactive visualization and user interaction capabilities.
 
@@ -1418,7 +1420,7 @@ We identify three priorities for future work: (i) extension to ADMET and synthet
 \revisedstart
 \section{Data and Code Availability}
 
-The complete source code, trained model checkpoints, preprocessing scripts, scaffold-based splitting code, and training/evaluation configurations are publicly available at \url{https://github.com/NeuroXAI/MoleculeX-Predictive-Transformer-Model}. The repository includes:
+The complete source code, trained model checkpoints, preprocessing scripts, scaffold-based splitting code, and training/evaluation configurations are publicly available at \url{https://github.com/NeuroXAI/MoleculeX-Predictive-Transformer-Model} (accessed on 21 February 2026). The repository includes:
 
 \begin{itemize}
 \item Preprocessing scripts for ChEMBL data extraction, filtering, and cleaning (\texttt{scripts/preprocess\_chembl.py})
@@ -1464,3 +1466,5 @@ During the preparation of this work the authors used Napkin.ai in order to assis
 \endinput
 %%
 %% End of file `modified_paper.tex'.
+
+
