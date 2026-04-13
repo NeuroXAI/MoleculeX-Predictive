@@ -71,15 +71,33 @@ model_lock = Lock()
 # Add computation locks to prevent multiple simultaneous computations
 shap_computation_lock = Lock()
 shap_is_running = False
+shap_lock_started_at = None
+SHAP_LOCK_TTL_SECONDS = int(os.environ.get("SHAP_LOCK_TTL_SECONDS", "3600"))
 lime_computation_lock = Lock()
 lime_is_running = False
 
+shap_status = {"status": "idle", "result": None, "message": ""}
+
+
+def clear_stale_shap_lock():
+    global shap_is_running, shap_lock_started_at, shap_status
+    with shap_computation_lock:
+        if not shap_is_running or shap_lock_started_at is None:
+            return
+        if time.monotonic() - shap_lock_started_at <= SHAP_LOCK_TTL_SECONDS:
+            return
+        shap_is_running = False
+        shap_lock_started_at = None
+        shap_status["status"] = "idle"
+        shap_status["message"] = "SHAP lock cleared (stale)."
+        logging.warning("SHAP lock released after TTL")
+
 
 def reset_computation_status():
-    """Reset computation status flags"""
-    global shap_is_running, lime_is_running
+    global shap_is_running, lime_is_running, shap_lock_started_at
     with shap_computation_lock:
         shap_is_running = False
+        shap_lock_started_at = None
     with lime_computation_lock:
         lime_is_running = False
     logging.info("Computation status reset")
@@ -87,6 +105,7 @@ def reset_computation_status():
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
+logging.info("Torch device: %s CUDA available: %s", device, torch.cuda.is_available())
 # Status of the training
 training_status = {"status": "idle", "message": ""}
 prediction_status = {"status": "idle", "message": "", "progress": 0, "eta": None}
@@ -733,6 +752,7 @@ def get_shap_data():
     Returns SHAP data from the CSV file. If no CSV exists, automatically generates SHAP data.
     """
     try:
+        clear_stale_shap_lock()
         shap_csv_path = os.path.join(UPLOAD_FOLDER, "shap_data.csv")
         predictions_file_path = os.path.join(UPLOAD_FOLDER, "predictions.csv")
 
@@ -761,6 +781,7 @@ def get_shap_data():
                             {
                                 "message": "SHAP computation is already running. Please wait for it to complete.",
                                 "status": "already_running",
+                                "hint": "POST /reset_computation_status if stuck; lock also clears after SHAP_LOCK_TTL_SECONDS (default 3600).",
                             }
                         ),
                         409,
@@ -812,20 +833,19 @@ def get_shap_data():
         return jsonify({"error": f"Failed to fetch SHAP data: {str(e)}"}), 500
 
 
-shap_status = {"status": "idle", "result": None, "message": ""}
-
 # Rate limiting for status endpoints
 status_request_times = {}
 
 
 def background_shap_computation(file_path):
-    global shap_status, shap_is_running
+    global shap_status, shap_is_running, shap_lock_started_at
     try:
         with shap_computation_lock:
             if shap_is_running:
                 logging.info("SHAP computation already running, skipping...")
                 return
             shap_is_running = True
+            shap_lock_started_at = time.monotonic()
             logging.info("SHAP computation started - lock acquired")
 
         shap_status["status"] = "running"
@@ -844,12 +864,14 @@ def background_shap_computation(file_path):
     finally:
         with shap_computation_lock:
             shap_is_running = False
+            shap_lock_started_at = None
             logging.info("SHAP computation finished - lock released")
 
 
 @app.route("/start_shap_explanation", methods=["POST"])
 def start_shap_explanation():
     try:
+        clear_stale_shap_lock()
         if "file" not in request.files:
             return jsonify({"error": "No file found in request"}), 400
 
@@ -861,6 +883,7 @@ def start_shap_explanation():
                         {
                             "message": "SHAP computation is already running. Please wait for it to complete.",
                             "status": "already_running",
+                            "hint": "POST /reset_computation_status if stuck; lock also clears after SHAP_LOCK_TTL_SECONDS (default 3600).",
                         }
                     ),
                     409,
@@ -891,6 +914,8 @@ def get_shap_status():
     Returns the current status of the SHAP computation.
     """
     global shap_status, status_request_times, shap_is_running
+
+    clear_stale_shap_lock()
 
     # Basic rate limiting - allow max 1 request per second per client
     client_ip = request.remote_addr
@@ -1433,6 +1458,7 @@ def explain_shap_in_background(file_path):
     finally:
         with shap_computation_lock:
             shap_is_running = False
+            shap_lock_started_at = None
 
 
 @app.route("/download_shap_plot/<plot_filename>", methods=["GET"])
@@ -1461,6 +1487,7 @@ def download_shap_plot(plot_filename):
 @app.route("/explain_predictions", methods=["POST"])
 def explain_predictions():
     try:
+        clear_stale_shap_lock()
         predictions_file_path = os.path.join(UPLOAD_FOLDER, "predictions.csv")
 
         if not os.path.exists(predictions_file_path):
@@ -1481,6 +1508,7 @@ def explain_predictions():
                         {
                             "message": "SHAP computation is already running. Please wait for it to complete.",
                             "status": "already_running",
+                            "hint": "POST /reset_computation_status if stuck; lock also clears after SHAP_LOCK_TTL_SECONDS (default 3600).",
                         }
                     ),
                     409,
@@ -1876,23 +1904,31 @@ def compute_integrated_gradients_embedding(
             logging.info(f"Wrapper forward called with embeds shape: {embeds.shape}")
 
             # Ensure knowledge_features matches the batch size of embeds
-            if knowledge_features.shape[0] != batch_size:
-                # If batch sizes don't match, we need to handle this properly
+            kf_rows = knowledge_features.shape[0]
+            if kf_rows != batch_size:
                 if batch_size == 1:
-                    # If embeds is a single sample, use the first knowledge feature
                     knowledge_features_batch = knowledge_features[:1]
+                elif batch_size % kf_rows == 0:
+                    knowledge_features_batch = knowledge_features.repeat(
+                        batch_size // kf_rows, 1
+                    )
                 else:
-                    # If embeds has multiple samples, repeat knowledge_features to match
-                    knowledge_features_batch = knowledge_features.repeat(batch_size, 1)
+                    raise ValueError(
+                        f"embed batch {batch_size} not divisible by knowledge batch {kf_rows}"
+                    )
             else:
                 knowledge_features_batch = knowledge_features
 
-            # Ensure attention_mask matches the batch size
-            if attention_mask.shape[0] != batch_size:
+            am_rows = attention_mask.shape[0]
+            if am_rows != batch_size:
                 if batch_size == 1:
                     attention_mask_batch = attention_mask[:1]
+                elif batch_size % am_rows == 0:
+                    attention_mask_batch = attention_mask.repeat(batch_size // am_rows, 1)
                 else:
-                    attention_mask_batch = attention_mask.repeat(batch_size, 1)
+                    raise ValueError(
+                        f"embed batch {batch_size} not divisible by attention batch {am_rows}"
+                    )
             else:
                 attention_mask_batch = attention_mask
 
@@ -3672,12 +3708,13 @@ def comprehensive_report_status():
 
 
 if __name__ == "__main__":
-    try:
-        load_model_and_tokenizer()  # Load model on startup
-        logging.info("Application startup completed successfully.")
-    except Exception as e:
-        logging.error(f"Failed to start application: {e}")
-        print(f"ERROR: Failed to start application: {e}")
-        exit(1)
-
-    app.run(debug=True)
+    debug_mode = os.environ.get("FLASK_DEBUG", "true").lower() in ("1", "true", "yes")
+    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not debug_mode:
+        try:
+            load_model_and_tokenizer()
+            logging.info("Application startup completed successfully.")
+        except Exception as e:
+            logging.error(f"Failed to start application: {e}")
+            print(f"ERROR: Failed to start application: {e}")
+            exit(1)
+    app.run(debug=debug_mode, use_reloader=debug_mode)
