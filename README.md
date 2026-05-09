@@ -11,6 +11,7 @@ The frontend for the **Material Recognition Model** is built using **Next.js**, 
 - **npm** package manager
 ## Project Structure
 
+
 - `pages/`: Contains React components mapped to different routes.
 - `public/`: Static files, such as images and icons.
 - `components/`: Reusable React components (e.g., input forms, result cards).
